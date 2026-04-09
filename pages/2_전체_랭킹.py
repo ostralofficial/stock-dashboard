@@ -70,11 +70,11 @@ def load_ranking_data(year, item):
 @st.cache_data(ttl=600, show_spinner="종목 목록 로딩 중...")
 def get_available_years():
     client = get_client()
-    res = client.table("financials").select("year").execute()
+    res = client.table("financials").select("year").order("year", desc=True).limit(1).execute()
     if not res.data:
-        return list(range(2014, 2026))
-    years = sorted(set(int(r["year"]) for r in res.data), reverse=True)
-    return years
+        return list(range(2025, 2013, -1))
+    max_year = int(res.data[0]["year"])
+    return list(range(max_year, 2013, -1))
 
 # ── 필터 ─────────────────────────────────────────────────
 col1, col2, col3 = st.columns([3, 1, 1])
