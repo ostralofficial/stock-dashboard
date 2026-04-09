@@ -53,17 +53,18 @@ def get_available_years():
     return years
 
 # ── 필터 ─────────────────────────────────────────────────
-col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+col1, col2, col3 = st.columns([3, 1, 1])
 with col1:
     sel_item = st.selectbox("정렬 기준 항목", RANKING_ITEMS, index=RANKING_ITEMS.index("ROE"))
 with col2:
-    years = get_available_years()
-    sel_year = st.selectbox("연도", years, index=0)
-with col3:
     order = st.radio("정렬", ["내림차순", "오름차순"], horizontal=True)
-with col4:
+with col3:
     top_n = st.selectbox("표시 개수", [30, 50, 100, 200, 0],
                          format_func=lambda x: "전체" if x == 0 else f"상위 {x}개")
+
+# 최신 연도 자동 선택
+years = get_available_years()
+sel_year = years[0] if years else 2025
 
 ascending = order == "오름차순"
 
