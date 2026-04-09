@@ -1,197 +1,201 @@
 import streamlit as st
+import pandas as pd
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from db import get_all_stocks, get_client, add_stock, delete_stock
 
 st.set_page_config(
-    page_title="주식 재무 분석",
-    page_icon="📈",
+    page_title="Setting",
+    page_icon="⚙️",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&family=Space+Grotesk:wght@300;500;700&display=swap');
-
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #0a0e1a 0%, #0d1f3c 50%, #0a1628 100%);
-    min-height: 100vh;
-}
-[data-testid="stHeader"] { background: transparent; }
-#MainMenu, footer { visibility: hidden; }
-[data-testid="collapsedControl"] { display: none; }
-
-.hero-title {
-    text-align: center;
-    padding: 60px 0 20px;
-    font-family: 'Space Grotesk', sans-serif;
-}
-.hero-title .icon { font-size: 64px; display: block; margin-bottom: 16px; }
-.hero-title h1 {
-    font-size: 52px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: -1px;
-    margin: 0;
-}
-.hero-title h1 span {
-    background: linear-gradient(90deg, #0078ff, #00d4aa);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-.hero-title p {
-    margin-top: 12px;
-    font-size: 14px;
-    color: rgba(255,255,255,0.35);
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 300;
-}
-.divline {
-    width: 50px; height: 2px;
-    background: linear-gradient(90deg, #0078ff, #00d4aa);
-    margin: 20px auto 40px;
-    border-radius: 2px;
-}
-
-.nav-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 20px;
-    padding: 36px 28px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-align: left;
-    min-height: 200px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.nav-card:hover {
-    border-color: rgba(255,255,255,0.22);
-    transform: translateY(-5px);
-    box-shadow: 0 24px 48px rgba(0,0,0,0.5);
-    background: rgba(255,255,255,0.07);
-}
-.nav-card .cicon { font-size: 36px; line-height: 1; }
-.nav-card .ctitle {
-    font-size: 22px;
-    font-weight: 700;
-    color: #fff;
-    font-family: 'Noto Sans KR', sans-serif;
-    margin: 0;
-}
-.nav-card .cdesc {
-    font-size: 13px;
-    color: rgba(255,255,255,0.38);
-    line-height: 1.7;
-    font-weight: 300;
-    flex: 1;
-}
-.nav-card .carrow {
-    color: rgba(255,255,255,0.2);
-    font-size: 20px;
-    align-self: flex-end;
-    transition: all 0.3s;
-}
-.nav-card:hover .carrow { color: rgba(255,255,255,0.6); transform: translate(3px,-3px); }
-.nav-card.coming { opacity: 0.45; cursor: default; }
-.nav-card.coming:hover { transform: none; box-shadow: none; background: rgba(255,255,255,0.04); }
-.badge {
-    display: inline-block;
-    font-size: 10px;
-    padding: 2px 10px;
-    border-radius: 20px;
-    background: rgba(255,140,0,0.15);
-    color: rgba(255,180,50,0.85);
-    border: 1px solid rgba(255,140,0,0.25);
-    font-weight: 500;
-    letter-spacing: 1px;
-}
-.nav-card.blue  { border-top: 2px solid rgba(0,120,255,0.4); }
-.nav-card.green { border-top: 2px solid rgba(0,212,170,0.4); }
-.nav-card.purple{ border-top: 2px solid rgba(130,80,255,0.3); }
-.nav-card.orange{ border-top: 2px solid rgba(255,140,0,0.4); }
-
-/* 버튼 숨기기 */
-div[data-testid="stButton"] button {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    width: 100% !important;
+[data-testid="stSidebar"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+.home-btn button {
+    background: rgba(0,0,0,0.06) !important;
+    border: 1px solid rgba(0,0,0,0.12) !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 히어로 ───────────────────────────────────────────────
-st.markdown("""
-<div class="hero-title">
-    <span class="icon">📈</span>
-    <h1>주식 <span>재무분석</span></h1>
-    <p>Financial Intelligence Platform</p>
-</div>
-<div class="divline"></div>
-""", unsafe_allow_html=True)
+# 홈 버튼
+with st.container():
+    st.markdown('<div class="home-btn">', unsafe_allow_html=True)
+    if st.button("← Home"):
+        st.switch_page("app.py")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ── 카드 ─────────────────────────────────────────────────
-col1, col2 = st.columns(2, gap="medium")
+st.header("Setting")
 
-with col1:
-    st.markdown("""
-    <div class="nav-card blue" onclick="window.location.href='/종목_상세'">
-        <div class="cicon">🔍</div>
-        <div class="ctitle">종목 상세</div>
-        <div class="cdesc">개별 종목의 분기별 재무 데이터와<br>주가 추이를 한눈에 확인</div>
-        <div class="carrow">↗</div>
-    </div>
-    """, unsafe_allow_html=True)
+tab1, tab2, tab3, tab4 = st.tabs(["DB 현황", "종목 관리", "데이터 수집", "수동 입력"])
 
-with col2:
-    st.markdown("""
-    <div class="nav-card green" onclick="window.location.href='/전체_랭킹'">
-        <div class="cicon">📊</div>
-        <div class="ctitle">전체 랭킹</div>
-        <div class="cdesc">ROE, 영익률 등 항목별로<br>전체 종목을 정렬하여 비교</div>
-        <div class="carrow">↗</div>
-    </div>
-    """, unsafe_allow_html=True)
+# ── Tab 1: DB 현황 ────────────────────────────────────────
+with tab1:
+    st.subheader("DB 현황")
+    try:
+        client = get_client()
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            res = client.table("stocks").select("stock_code", count="exact").execute()
+            st.metric("총 종목 수", f"{res.count:,}개")
+        with col2:
+            res = client.table("financials").select("id", count="exact").execute()
+            st.metric("재무 데이터", f"{res.count:,}행")
+        with col3:
+            res = client.table("prices").select("stock_code", count="exact").execute()
+            st.metric("주가 데이터", f"{res.count:,}행")
+        with col4:
+            res = client.table("manual_data").select("stock_code", count="exact").execute()
+            st.metric("수동 입력", f"{res.count:,}행")
+    except Exception as e:
+        st.error(f"DB 연결 오류: {e}")
 
-col3, col4 = st.columns(2, gap="medium")
+# ── Tab 2: 종목 관리 ──────────────────────────────────────
+with tab2:
+    st.subheader("종목 관리")
+    stocks_df = get_all_stocks()
 
-with col3:
-    st.markdown("""
-    <div class="nav-card purple coming">
-        <div class="cicon">🌱</div>
-        <div class="ctitle">Grow</div>
-        <span class="badge">COMING SOON</span>
-        <div class="cdesc">성장성 분석 및 투자 인사이트<br>— 준비 중입니다</div>
-        <div class="carrow">↗</div>
-    </div>
-    """, unsafe_allow_html=True)
+    inner_tab1, inner_tab2 = st.tabs(["종목 목록", "종목 추가"])
 
-with col4:
-    st.markdown("""
-    <div class="nav-card orange" onclick="window.location.href='/설정'">
-        <div class="cicon">⚙️</div>
-        <div class="ctitle">설정</div>
-        <div class="cdesc">DART API 키 설정 및<br>데이터 수집 관리</div>
-        <div class="carrow">↗</div>
-    </div>
-    """, unsafe_allow_html=True)
+    with inner_tab1:
+        st.caption(f"총 {len(stocks_df)}개 종목")
+        if not stocks_df.empty:
+            st.dataframe(
+                stocks_df[["name", "stock_code", "corp_code", "market"]],
+                use_container_width=True,
+                height=400,
+            )
+            del_name = st.selectbox("삭제할 종목", ["선택하세요"] + stocks_df["name"].tolist())
+            if del_name != "선택하세요":
+                if st.button(f"'{del_name}' 삭제", type="secondary"):
+                    code = stocks_df[stocks_df["name"] == del_name]["stock_code"].values[0]
+                    delete_stock(code)
+                    st.success("삭제 완료")
+                    st.rerun()
 
-# ── 클릭 버튼 (실제 네비게이션용) ────────────────────────
-st.markdown("<div style='margin-top: -180px;'>", unsafe_allow_html=True)
-c1, c2 = st.columns(2, gap="medium")
-with c1:
-    if st.button("→ 종목 상세", key="b1", use_container_width=True):
-        st.switch_page("pages/1_종목_상세.py")
-with c2:
-    if st.button("→ 전체 랭킹", key="b2", use_container_width=True):
-        st.switch_page("pages/2_전체_랭킹.py")
+    with inner_tab2:
+        st.caption("종목 개별 추가")
+        with st.form("add_stock_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                new_name = st.text_input("종목명", placeholder="삼성전자")
+                new_code = st.text_input("종목코드 (6자리)", placeholder="005930")
+            with c2:
+                new_corp = st.text_input("DART corp_code (8자리)", placeholder="00126380")
+                new_market = st.selectbox("시장", ["KRX", "KOSDAQ"])
+            if st.form_submit_button("추가", type="primary"):
+                if new_name and new_code and new_corp:
+                    ok, msg = add_stock(new_code, new_corp, new_name, new_market)
+                    if ok:
+                        st.success(f"'{new_name}' 추가 완료!")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+                else:
+                    st.warning("모든 항목을 입력해주세요")
 
-c3, c4 = st.columns(2, gap="medium")
-with c3:
-    st.button("→ Grow (준비중)", key="b3", use_container_width=True, disabled=True)
-with c4:
-    if st.button("→ 설정", key="b4", use_container_width=True):
-        st.switch_page("pages/3_설정.py")
-st.markdown("</div>", unsafe_allow_html=True)
+# ── Tab 3: 데이터 수집 ────────────────────────────────────
+with tab3:
+    st.subheader("DART 재무제표 수집")
+    st.info("""
+    DART API 키는 Streamlit Cloud Secrets에서 관리해요.
+    
+    **Manage app → Settings → Secrets** 에서:
+    ```toml
+    SUPABASE_URL = "https://..."
+    SUPABASE_KEY = "sb_secret_..."
+    DART_API_KEY = "여기에_DART_API_키"
+    ```
+    """)
+
+    dart_key = st.text_input("DART API 키 (임시 입력)", type="password",
+                              help="이 세션에서만 사용됩니다")
+
+    stocks_df2 = get_all_stocks()
+    if not stocks_df2.empty and dart_key:
+        col1, col2 = st.columns(2)
+        with col1:
+            target_names = st.multiselect(
+                "수집할 종목",
+                stocks_df2["name"].tolist(),
+                default=stocks_df2["name"].tolist()[:10],
+            )
+        with col2:
+            year_range = st.slider("수집 연도", 2014, 2025, (2023, 2025))
+            years = list(range(year_range[0], year_range[1] + 1))
+
+        n = len(target_names)
+        st.metric("예상 API 호출", f"{n * len(years) * 3:,}회")
+
+        if st.button("수집 시작", type="primary"):
+            from dart_collector import collect_batch
+            target_df = stocks_df2[stocks_df2["name"].isin(target_names)][
+                ["stock_code", "corp_code", "name"]
+            ].reset_index(drop=True)
+
+            progress = st.progress(0)
+            status = st.empty()
+
+            def on_progress(current, total, name):
+                progress.progress(current / total)
+                status.text(f"수집 중: {name} ({current+1}/{total})")
+
+            results = collect_batch(dart_key, target_df, years, on_progress)
+            total_saved = sum(r["saved"] for r in results)
+            st.success(f"완료: {total_saved:,}개 항목 저장")
+
+# ── Tab 4: 수동 입력 ──────────────────────────────────────
+with tab4:
+    st.subheader("수동 입력 (해외매출 / 수주잔고 등)")
+    stocks_df3 = get_all_stocks()
+    if stocks_df3.empty:
+        st.info("종목을 먼저 추가해주세요")
+        st.stop()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        sel_name = st.selectbox("종목", stocks_df3["name"].tolist(), key="manual_name")
+    with col2:
+        sel_year = st.selectbox("연도", list(range(2025, 2013, -1)), key="manual_year")
+
+    sel_code = stocks_df3[stocks_df3["name"] == sel_name]["stock_code"].values[0]
+
+    MANUAL_ITEMS = [
+        "해외매출1q", "해외매출2q", "해외매출3q", "해외매출4q", "해외매출",
+        "해외매출비중", "수주잔고1q", "수주잔고2q", "수주잔고3q", "수주잔고4q",
+    ]
+
+    # 기존 값 불러오기
+    client2 = get_client()
+    existing = client2.table("manual_data").select("item, value").eq(
+        "stock_code", sel_code).eq("year", sel_year).execute()
+    existing_dict = {r["item"]: r["value"] for r in (existing.data or [])}
+
+    with st.form("manual_form"):
+        cols = st.columns(3)
+        input_vals = {}
+        for i, item in enumerate(MANUAL_ITEMS):
+            with cols[i % 3]:
+                default = float(existing_dict.get(item, 0.0))
+                input_vals[item] = st.number_input(item, value=default, step=1.0, format="%.1f")
+        memo = st.text_input("메모", "")
+        if st.form_submit_button("저장", type="primary"):
+            for item, value in input_vals.items():
+                if value != 0.0:
+                    client2.table("manual_data").upsert({
+                        "stock_code": sel_code,
+                        "year": sel_year,
+                        "item": item,
+                        "value": value,
+                        "memo": memo,
+                    }, on_conflict="stock_code,year,item").execute()
+            st.success("저장 완료!")
+            st.rerun()
