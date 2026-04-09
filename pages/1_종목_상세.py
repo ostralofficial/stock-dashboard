@@ -8,7 +8,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import get_all_stocks, get_client
 
-st.set_page_config(page_title="종목 상세", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="종목 상세", page_icon="🔍", layout="wide", initial_sidebar_state="collapsed")
+st.markdown("""
+<style>
+[data-testid="stSidebar"] { display: none; }
+[data-testid="collapsedControl"] { display: none; }
+</style>
+""", unsafe_allow_html=True)
 st.header("종목 상세")
 
 INCOME_ITEMS = ["매출액", "매출원가", "매출총이익", "판관비", "영업이익", "순이익", "EPS"]
