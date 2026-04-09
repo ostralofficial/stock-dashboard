@@ -5,119 +5,124 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from db import get_all_stocks, get_client
 
 st.set_page_config(page_title="전체 랭킹", page_icon="📊", layout="wide")
 st.header("전체 종목 랭킹")
 
-XLSX_PATH = Path(__file__).parent.parent / "EPS-ACCUM.xlsx"
+# 랭킹에 사용할 연간(quarter=0) 항목들
+RANKING_ITEMS = [
+    "매출액", "매출증가", "매출원가", "매출원가증가", "매출원가률",
+    "매출총이익", "매출총이익률", "판관비", "판관비증가", "판관비율",
+    "영업이익", "영익증가", "영익률",
+    "순이익", "순익증가", "순익률",
+    "EPS", "EPS증가", "BPS", "DPS", "배당증가", "배당성향", "배당총액",
+    "ROE", "ROE평균",
+    "자산총계", "자본총계", "부채비율",
+    "현금성자산", "매출채권", "재고자산", "단기차입금",
+    "CFO", "주당CFO", "FCF", "주당FCF", "EBITDA", "감가상각",
+    "투자활동CF", "재무활동CF",
+    "주식수", "주식수변동",
+    "PER", "PBR", "EV/EBITDA", "Ey", "psr",
+    "적정가격", "RIM가격", "기대수익률", "10년가격",
+]
 
-# simple 시트 항목 (컬럼 인덱스 기준)
-SIMPLE_COLS = {
-    "주가": 5, "PER": 6, "PBR": 7, "BPS": 8,
-    "P/주당FCF": 9, "시가총액": 10, "시총대비현금": 11,
-    "EV": 12, "EV/EBITDA": 13, "Ey": 14, "PEG": 15, "psr": 16,
-    "적정주가": 17, "세법적정가%": 18, "RIM-기대수익": 19,
-    "재고자산회전율": 20, "매출채권회전율": 21, "현금": 22,
-    "부채비율": 24, "매출증가": 25, "해외매출증가": 26,
-    "해외매출비중": 27, "매출원가증가": 28, "영익증가": 29,
-    "영익률": 30, "순익증가": 31, "순익5년": 32,
-    "EPS증가": 33, "순익률": 34, "배당수익률": 35,
-    "배당증가": 36, "배당5년": 37, "배당성향": 38,
-    "ROE": 39, "주식수": 40, "주식수변동/3y": 41,
-    "NEFF": 42, "Div/per+Roe/per": 43, "Roe/pbr": 44,
-    "서준식교수": 45, "52주최저가대비": 48, "ROE변동성": 50,
-    "10년가치": 51, "10년가치승수": 52, "기대수익률": 53,
-    "현재가대비": 55, "CAPM": 56, "현재가대비CAPM": 57,
-}
+@st.cache_data(ttl=300, show_spinner="데이터 로딩 중...")
+def load_ranking_data(year, item):
+    client = get_client()
+    res = (client.table("financials")
+           .select("stock_code, value")
+           .eq("year", year)
+           .eq("quarter", 0)
+           .eq("item", item)
+           .execute())
+    if not res.data:
+        return pd.DataFrame()
+    df = pd.DataFrame(res.data)
+    stocks = get_all_stocks()[["stock_code", "name"]]
+    merged = df.merge(stocks, on="stock_code", how="left")[["name", "stock_code", "value"]]
+    return merged[merged["value"].notna()]
 
-@st.cache_data(ttl=600, show_spinner="simple 시트 로딩 중...")
-def load_simple():
-    if not XLSX_PATH.exists():
-        return None
-    raw = pd.read_excel(str(XLSX_PATH), sheet_name="simple", header=None)
-    rows = []
-    for _, r in raw.iloc[1:].iterrows():
-        name = r.iloc[1]
-        if pd.isna(name) or str(name).strip() == "":
-            continue
-        row = {"종목명": str(name).strip()}
-        for col_name, ci in SIMPLE_COLS.items():
-            try:
-                row[col_name] = float(r.iloc[ci])
-            except:
-                row[col_name] = None
-        rows.append(row)
-    return pd.DataFrame(rows)
+@st.cache_data(ttl=600, show_spinner="종목 목록 로딩 중...")
+def get_available_years():
+    client = get_client()
+    res = client.table("financials").select("year").execute()
+    if not res.data:
+        return list(range(2014, 2026))
+    years = sorted(set(r["year"] for r in res.data), reverse=True)
+    return years
 
-if not XLSX_PATH.exists():
-    st.error("EPS-ACCUM.xlsx 파일이 stock_app 폴더에 있어야 합니다.")
-    st.stop()
-
-df = load_simple()
-if df is None or df.empty:
-    st.warning("데이터를 불러올 수 없습니다.")
-    st.stop()
-
-# ── 필터 & 정렬 ──────────────────────────────────────────
-col1, col2, col3 = st.columns([2, 1, 1])
+# ── 필터 ─────────────────────────────────────────────────
+col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
 with col1:
-    sel_col = st.selectbox("정렬 기준 항목", list(SIMPLE_COLS.keys()), index=list(SIMPLE_COLS.keys()).index("ROE"))
+    sel_item = st.selectbox("정렬 기준 항목", RANKING_ITEMS, index=RANKING_ITEMS.index("ROE"))
 with col2:
-    order = st.radio("정렬 방향", ["내림차순 (높은값→낮은값)", "오름차순 (낮은값→높은값)"], index=0)
+    years = get_available_years()
+    sel_year = st.selectbox("연도", years, index=0)
 with col3:
-    top_n = st.selectbox("표시 개수", [30, 50, 100, 200, 0], format_func=lambda x: "전체" if x == 0 else f"상위 {x}개")
+    order = st.radio("정렬", ["내림차순", "오름차순"], horizontal=True)
+with col4:
+    top_n = st.selectbox("표시 개수", [30, 50, 100, 200, 0],
+                         format_func=lambda x: "전체" if x == 0 else f"상위 {x}개")
 
-ascending = "오름차순" in order
+ascending = order == "오름차순"
 
-sort_df = df[["종목명", sel_col]].dropna(subset=[sel_col]).copy()
-sort_df = sort_df.sort_values(sel_col, ascending=ascending).reset_index(drop=True)
-sort_df.index += 1  # 1부터 시작
+# ── 데이터 로드 & 정렬 ────────────────────────────────────
+with st.spinner("데이터 조회 중..."):
+    rank_df = load_ranking_data(sel_year, sel_item)
+
+if rank_df.empty:
+    st.warning(f"{sel_year}년 '{sel_item}' 데이터가 없습니다.")
+    st.stop()
+
+# NaN 및 None 제거 (이미 dropna 했지만 혹시 모를 케이스 대비)
+rank_df = rank_df[rank_df["value"].notna()]
+rank_df = rank_df.sort_values("value", ascending=ascending).reset_index(drop=True)
+rank_df.index += 1
+rank_df.columns = ["종목명", "종목코드", sel_item]
+
+# 마이너스 값 제외 옵션
+hide_negative = st.checkbox("마이너스 값 종목 제외", value=True)
+if hide_negative:
+    rank_df = rank_df[rank_df[sel_item] >= 0]
 
 if top_n > 0:
-    sort_df = sort_df.head(top_n)
-
-st.caption(f"총 {len(df)}개 종목 중 {len(sort_df)}개 표시 | NaN 제외")
-
-# ── 숫자 포맷 판단 (% 항목은 % 표시) ─────────────────────
-pct_cols = {"EPS증가", "매출증가", "영익증가", "순익증가", "배당증가",
-            "ROE", "영익률", "순익률", "배당수익률", "배당성향",
-            "Ey", "RIM-기대수익", "기대수익률", "CAPM", "해외매출비중",
-            "시총대비현금", "세법적정가%", "현재가대비", "현재가대비CAPM",
-            "Roe/pbr", "ROE변동성"}
-
-if sel_col in pct_cols:
-    fmt = "{:.2%}"
-    sort_df[sel_col] = sort_df[sel_col]
-    display_df = sort_df.style.format({sel_col: lambda x: f"{x:.1%}"}, na_rep="-")
+    display_df = rank_df.head(top_n)
 else:
-    display_df = sort_df.style.format({sel_col: "{:,.2f}"}, na_rep="-")
+    display_df = rank_df
 
-# ── 테이블 ───────────────────────────────────────────────
-st.dataframe(display_df, use_container_width=True, height=500)
+st.caption(f"{sel_year}년 기준 | 총 {len(rank_df)}개 종목 중 {len(display_df)}개 표시")
+
+# ── 테이블 ────────────────────────────────────────────────
+st.dataframe(
+    display_df.style.format({sel_item: "{:,.0f}"}, na_rep="-"),
+    use_container_width=True,
+    height=500,
+)
 
 st.download_button(
     "CSV 다운로드",
-    data=sort_df.to_csv(encoding="utf-8-sig", index=True),
-    file_name=f"ranking_{sel_col}.csv",
+    data=display_df.to_csv(encoding="utf-8-sig", index=True),
+    file_name=f"랭킹_{sel_year}_{sel_item}.csv",
     mime="text/csv",
 )
 
-# ── 바 차트 (상위 30개) ──────────────────────────────────
+# ── 바 차트 (상위 30개) ───────────────────────────────────
 st.divider()
-chart_n = min(30, len(sort_df))
-chart_df = sort_df.head(chart_n).copy()
+chart_n = min(30, len(display_df))
+chart_df = display_df.head(chart_n).copy()
 
 fig = px.bar(
     chart_df,
-    x="종목명", y=sel_col,
-    title=f"{sel_col} {'상위' if not ascending else '하위'} {chart_n}개",
-    color=sel_col,
+    x="종목명", y=sel_item,
+    title=f"{sel_year}년 {sel_item} {'상위' if not ascending else '하위'} {chart_n}개",
+    color=sel_item,
     color_continuous_scale="Blues" if not ascending else "Reds_r",
 )
 fig.update_layout(
-    height=420,
+    height=450,
     xaxis_tickangle=-45,
     coloraxis_showscale=False,
-    margin=dict(b=100),
+    margin=dict(b=120),
 )
 st.plotly_chart(fig, use_container_width=True)
