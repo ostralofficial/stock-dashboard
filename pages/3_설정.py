@@ -123,6 +123,7 @@ with tab3:
 
             target_df = stocks_df2[["stock_code", "corp_code", "name"]].reset_index(drop=True)
 
+            import random
             # DART로 실제 수집된 종목 조회 (source='DART')
             client_tmp = get_client()
             all_codes = target_df["stock_code"].tolist()
@@ -137,15 +138,17 @@ with tab3:
                     for r in res.data:
                         dart_collected.add(r["stock_code"])
 
-            # DART 수집 안 된 종목 먼저, 된 종목은 뒤로
-            target_df["_priority"] = target_df["stock_code"].apply(
-                lambda c: 0 if c not in dart_collected else 1
-            )
-            target_df = target_df.sort_values("_priority").drop(columns=["_priority"]).reset_index(drop=True)
+            # 미수집 / 수집완료 분리 후 각각 랜덤 섞기
+            not_collected = target_df[~target_df["stock_code"].isin(dart_collected)].copy()
+            collected = target_df[target_df["stock_code"].isin(dart_collected)].copy()
 
-            not_yet = len(target_df[target_df["stock_code"].apply(lambda c: c not in dart_collected)])
+            not_collected = not_collected.sample(frac=1).reset_index(drop=True)
+            collected = collected.sample(frac=1).reset_index(drop=True)
+
+            target_df = pd.concat([not_collected, collected], ignore_index=True)
+
             first_name = target_df.iloc[0]["name"]
-            st.info(f"미수집 종목: {not_yet}개 — 첫 번째: {first_name}")
+            st.info(f"미수집: {len(not_collected)}개 → 수집완료: {len(collected)}개 | 첫 번째: {first_name}")
 
             progress = st.progress(0)
             status = st.empty()
@@ -158,6 +161,23 @@ with tab3:
 
             results = collect_batch(dart_key, target_df, years, on_progress)
             total_saved = sum(r["saved"] for r in results)
+
+            # 수집 기록 저장
+            from datetime import datetime
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+            log_records = []
+            for r in results:
+                if r["saved"] > 0:
+                    log_records.append({
+                        "stock_code": target_df[target_df["name"]==r["name"]]["stock_code"].values[0] if r["name"] in target_df["name"].values else "",
+                        "name": r["name"],
+                        "collected_at": now_str,
+                        "item_count": r["saved"],
+                        "years": f"{years[0]}~{years[-1]}",
+                    })
+            if log_records:
+                get_client().table("collect_log").insert(log_records).execute()
+
             st.success(f"완료: {total_saved:,}개 항목 저장")
             st.rerun()
 
@@ -167,32 +187,31 @@ with tab3:
     st.subheader("수집 기록")
     try:
         client_log = get_client()
-        log_res = (client_log.table("financials")
-                   .select("stock_code, item, value, source, updated_at")
-                   .order("updated_at", desc=True)
-                   .limit(500)
+        log_res = (client_log.table("collect_log")
+                   .select("name, collected_at, item_count, years")
+                   .order("collected_at", desc=True)
+                   .limit(2000)
                    .execute())
 
         if log_res.data:
             log_df = pd.DataFrame(log_res.data)
-            stocks_map = dict(zip(stocks_df2["stock_code"], stocks_df2["name"])) if not stocks_df2.empty else {}
-            log_df["종목명"] = log_df["stock_code"].map(stocks_map).fillna(log_df["stock_code"])
-            log_df["수집일시"] = pd.to_datetime(log_df["updated_at"])
+            log_df.columns = ["종목명", "수집일시", "수집항목수", "수집연도"]
 
-            # 종목별 최근 수집일 + 수집항목수 + 수집내용(항목 목록)
+            # 종목별 최근 수집일 + 누적 수집 횟수
             summary = (log_df.groupby("종목명")
                        .agg(
                            최근수집일=("수집일시", "max"),
-                           수집항목수=("item", "count"),
-                           수집내용=("item", lambda x: ", ".join(sorted(x.unique())))
+                           수집횟수=("수집일시", "count"),
+                           수집연도=("수집연도", "last"),
+                           총수집항목=("수집항목수", "sum"),
                        )
                        .reset_index()
                        .sort_values("종목명"))
 
-            summary["최근수집일"] = summary["최근수집일"].dt.strftime("%Y-%m-%d %H:%M")
+            st.caption(f"총 {len(summary)}개 종목 수집 기록")
             st.dataframe(summary, use_container_width=True, height=500)
         else:
-            st.info("아직 수집 기록이 없습니다.")
+            st.info("아직 수집 기록이 없습니다. 수집 시작 후 여기에 기록이 쌓여요.")
     except Exception as e:
         st.error(f"기록 조회 오류: {e}")
 
