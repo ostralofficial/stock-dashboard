@@ -101,7 +101,7 @@ col1, col2 = st.columns(2, gap="medium")
 
 with col1:
     if st.button(
-        "🔍\n\n종목 상세\n\n개별 종목의 분기별 재무 데이터와\n주가 추이를 한눈에 확인\n\n↗",
+        "🔍\n\nDetail\n\n개별 종목의 분기별 재무 데이터와\n주가 추이를 한눈에 확인\n\n↗",
         key="btn_stock",
         use_container_width=True,
     ):
@@ -109,7 +109,7 @@ with col1:
 
 with col2:
     if st.button(
-        "📊\n\n전체 랭킹\n\nROE, 영익률 등 항목별로\n전체 종목을 정렬하여 비교\n\n↗",
+        "📊\n\nScreening\n\nROE, 영익률 등 항목별로\n전체 종목을 정렬하여 비교\n\n↗",
         key="btn_rank",
         use_container_width=True,
     ):
@@ -127,7 +127,7 @@ with col3:
 
 with col4:
     if st.button(
-        "⚙️\n\n설정\n\nDART API 키 설정 및\n데이터 수집 관리\n\n↗",
+        "⚙️\n\nSetting\n\nDART API 키 설정 및\n데이터 수집 관리\n\n↗",
         key="btn_setting",
         use_container_width=True,
     ):
