@@ -53,14 +53,7 @@ st.markdown("""
     -webkit-text-fill-color: transparent;
 }
 
-.left p {
-    margin-top: 14px;
-    font-size: 12px;
-    color: rgba(255,255,255,0.3);
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    font-weight: 300;
-}
+
 
 .right {
     display: flex;
@@ -134,8 +127,7 @@ a.menu-item:hover {
 <div class="layout">
     <div class="left">
         <h1>Ostral</h1>
-        <p>Financial Intelligence Platform</p>
-    </div>
+        </div>
     <div class="right">
         <a class="menu-item" href="/종목_상세" target="_self">Detail</a>
         <a class="menu-item" href="/전체_랭킹" target="_self">Screening</a>
