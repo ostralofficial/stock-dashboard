@@ -7,7 +7,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from db import get_all_stocks, get_client
 
-st.set_page_config(page_title="전체 랭킹", page_icon="📊", layout="wide")
+st.set_page_config(page_title="전체 랭킹", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
+st.markdown("""
+<style>
+[data-testid="stSidebar"] { display: none; }
+[data-testid="collapsedControl"] { display: none; }
+</style>
+""", unsafe_allow_html=True)
 st.header("전체 종목 랭킹")
 
 # 랭킹에 사용할 연간(quarter=0) 항목들
