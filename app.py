@@ -27,6 +27,8 @@ st.markdown("""
     z-index: 0;
 }
 [data-testid="stHeader"] { background: transparent; }
+[data-testid="stSidebar"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
 #MainMenu, footer { visibility: hidden; }
 [data-testid="collapsedControl"] { display: none; }
