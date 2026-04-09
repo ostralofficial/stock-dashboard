@@ -12,8 +12,27 @@ st.markdown("""
 <style>
 [data-testid="stSidebar"] { display: none; }
 [data-testid="collapsedControl"] { display: none; }
+.home-btn button {
+    background: rgba(255,255,255,0.08) !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    color: rgba(255,255,255,0.8) !important;
+    border-radius: 8px !important;
+    padding: 4px 14px !important;
+    font-size: 13px !important;
+    transition: all 0.2s !important;
+}
+.home-btn button:hover {
+    background: rgba(255,255,255,0.15) !important;
+    color: #fff !important;
+}
 </style>
 """, unsafe_allow_html=True)
+with st.container():
+    st.markdown('<div class="home-btn">', unsafe_allow_html=True)
+    if st.button("← Home"):
+        st.switch_page("app.py")
+    st.markdown('</div>', unsafe_allow_html=True)
+
 st.header("전체 종목 랭킹")
 
 # 랭킹에 사용할 연간(quarter=0) 항목들
