@@ -73,7 +73,7 @@ def get_available_years():
     res = client.table("financials").select("year").execute()
     if not res.data:
         return list(range(2014, 2026))
-    years = sorted(set(r["year"] for r in res.data), reverse=True)
+    years = sorted(set(int(r["year"]) for r in res.data), reverse=True)
     return years
 
 # ── 필터 ─────────────────────────────────────────────────
@@ -116,7 +116,7 @@ if top_n > 0:
 else:
     display_df = rank_df
 
-st.caption(f"{sel_year}년 기준 | 총 {len(rank_df)}개 종목 중 {len(display_df)}개 표시")
+st.caption(f"기준 연도: {sel_year}년 (최신) | 총 {len(rank_df)}개 종목 중 {len(display_df)}개 표시")
 
 # ── 테이블 ────────────────────────────────────────────────
 st.dataframe(
