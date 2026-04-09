@@ -123,36 +123,29 @@ with tab3:
 
             target_df = stocks_df2[["stock_code", "corp_code", "name"]].reset_index(drop=True)
 
-            # 마지막 수집 시각 기준으로 정렬 (오래된 것 / 미수집 → 우선)
+            # DART로 실제 수집된 종목 조회 (source='DART')
             client_tmp = get_client()
-
-            # 종목별 최근 수집일 조회
-            recent = {}
             all_codes = target_df["stock_code"].tolist()
-            # 500개씩 나눠서 조회 (Supabase in_ 제한)
+
+            dart_collected = set()
             for chunk_start in range(0, len(all_codes), 200):
                 chunk = all_codes[chunk_start:chunk_start+200]
                 res = client_tmp.table("financials").select(
-                    "stock_code, updated_at"
-                ).in_("stock_code", chunk).order("updated_at", desc=True).execute()
+                    "stock_code"
+                ).in_("stock_code", chunk).eq("source", "DART").limit(1000).execute()
                 if res.data:
                     for r in res.data:
-                        if r["stock_code"] not in recent:
-                            recent[r["stock_code"]] = r["updated_at"]
+                        dart_collected.add(r["stock_code"])
 
-            # 미수집(없는 종목) → "0000", 오래된 순으로 정렬
-            sorted_codes = sorted(
-                all_codes,
-                key=lambda c: recent.get(c, "0000-00-00T00:00:00")
+            # DART 수집 안 된 종목 먼저, 된 종목은 뒤로
+            target_df["_priority"] = target_df["stock_code"].apply(
+                lambda c: 0 if c not in dart_collected else 1
             )
-            code_order = {c: i for i, c in enumerate(sorted_codes)}
-            target_df = target_df.iloc[
-                sorted(range(len(target_df)),
-                       key=lambda i: code_order.get(target_df.iloc[i]["stock_code"], 9999))
-            ].reset_index(drop=True)
+            target_df = target_df.sort_values("_priority").drop(columns=["_priority"]).reset_index(drop=True)
 
+            not_yet = len(target_df[target_df["stock_code"].apply(lambda c: c not in dart_collected)])
             first_name = target_df.iloc[0]["name"]
-            st.info(f"수집 순서 결정 완료 — 첫 번째: {first_name}")
+            st.info(f"미수집 종목: {not_yet}개 — 첫 번째: {first_name}")
 
             progress = st.progress(0)
             status = st.empty()
