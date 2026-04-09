@@ -125,22 +125,34 @@ with tab3:
 
             # 마지막 수집 시각 기준으로 정렬 (오래된 것 / 미수집 → 우선)
             client_tmp = get_client()
-            res = client_tmp.table("financials").select(
-                "stock_code, updated_at"
-            ).in_("stock_code", target_df["stock_code"].tolist()).order(
-                "updated_at", desc=True
-            ).execute()
 
+            # 종목별 최근 수집일 조회
             recent = {}
-            if res.data:
-                for r in res.data:
-                    if r["stock_code"] not in recent:
-                        recent[r["stock_code"]] = r["updated_at"]
+            all_codes = target_df["stock_code"].tolist()
+            # 500개씩 나눠서 조회 (Supabase in_ 제한)
+            for chunk_start in range(0, len(all_codes), 200):
+                chunk = all_codes[chunk_start:chunk_start+200]
+                res = client_tmp.table("financials").select(
+                    "stock_code, updated_at"
+                ).in_("stock_code", chunk).order("updated_at", desc=True).execute()
+                if res.data:
+                    for r in res.data:
+                        if r["stock_code"] not in recent:
+                            recent[r["stock_code"]] = r["updated_at"]
 
+            # 미수집(없는 종목) → "0000", 오래된 순으로 정렬
+            sorted_codes = sorted(
+                all_codes,
+                key=lambda c: recent.get(c, "0000-00-00T00:00:00")
+            )
+            code_order = {c: i for i, c in enumerate(sorted_codes)}
             target_df = target_df.iloc[
                 sorted(range(len(target_df)),
-                       key=lambda i: recent.get(target_df.iloc[i]["stock_code"], "0000-00-00"))
+                       key=lambda i: code_order.get(target_df.iloc[i]["stock_code"], 9999))
             ].reset_index(drop=True)
+
+            first_name = target_df.iloc[0]["name"]
+            st.info(f"수집 순서 결정 완료 — 첫 번째: {first_name}")
 
             progress = st.progress(0)
             status = st.empty()
