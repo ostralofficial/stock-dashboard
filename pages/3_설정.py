@@ -105,45 +105,25 @@ with tab2:
 # ── Tab 3: 데이터 수집 ────────────────────────────────────
 with tab3:
     st.subheader("DART 재무제표 수집")
-    st.info("""
-    DART API 키는 Streamlit Cloud Secrets에서 관리해요.
-    
-    **Manage app → Settings → Secrets** 에서:
-    ```toml
-    SUPABASE_URL = "https://..."
-    SUPABASE_KEY = "sb_secret_..."
-    DART_API_KEY = "여기에_DART_API_키"
-    ```
-    """)
 
-    dart_key = st.text_input("DART API 키 (임시 입력)", type="password",
+    dart_key = st.text_input("DART API 키", type="password",
                               help="이 세션에서만 사용됩니다")
 
     stocks_df2 = get_all_stocks()
-    if not stocks_df2.empty and dart_key:
-        col1, col2 = st.columns(2)
-        with col1:
-            target_names = st.multiselect(
-                "수집할 종목",
-                stocks_df2["name"].tolist(),
-                default=stocks_df2["name"].tolist()[:10],
-            )
-        with col2:
-            year_range = st.slider("수집 연도", 2014, 2025, (2023, 2025))
-            years = list(range(year_range[0], year_range[1] + 1))
 
-        n = len(target_names)
-        st.metric("예상 API 호출", f"{n * len(years) * 3:,}회")
+    if not stocks_df2.empty and dart_key:
+        year_range = st.slider("수집 연도", 2014, 2025, (2023, 2025))
+        years = list(range(year_range[0], year_range[1] + 1))
+
+        n = len(stocks_df2)
+        st.caption(f"전체 {n}개 종목 · 오래된 순서부터 자동 수집")
 
         if st.button("수집 시작", type="primary"):
             from dart_collector import collect_batch
-            import datetime
 
-            target_df = stocks_df2[stocks_df2["name"].isin(target_names)][
-                ["stock_code", "corp_code", "name"]
-            ].reset_index(drop=True)
+            target_df = stocks_df2[["stock_code", "corp_code", "name"]].reset_index(drop=True)
 
-            # 최근 수집 시각 조회 → 오래된 종목부터 수집
+            # 마지막 수집 시각 기준으로 정렬 (오래된 것 / 미수집 → 우선)
             client_tmp = get_client()
             res = client_tmp.table("financials").select(
                 "stock_code, updated_at"
@@ -151,30 +131,65 @@ with tab3:
                 "updated_at", desc=True
             ).execute()
 
+            recent = {}
             if res.data:
-                # 최근 수집된 종목 순서 (내림차순) → 뒤로 보냄
-                recent = {}
                 for r in res.data:
                     if r["stock_code"] not in recent:
                         recent[r["stock_code"]] = r["updated_at"]
-                # 오래된 순서로 정렬 (없는 종목 = 한번도 안 된 것 → 최우선)
-                def sort_key(row):
-                    return recent.get(row["stock_code"], "0000-00-00")
-                target_df = target_df.iloc[
-                    sorted(range(len(target_df)), key=lambda i: sort_key(target_df.iloc[i]))
-                ].reset_index(drop=True)
-                st.info(f"가장 오래전에 수집된 종목부터 수집합니다. 첫 번째: {target_df.iloc[0]['name']}")
+
+            target_df = target_df.iloc[
+                sorted(range(len(target_df)),
+                       key=lambda i: recent.get(target_df.iloc[i]["stock_code"], "0000-00-00"))
+            ].reset_index(drop=True)
 
             progress = st.progress(0)
             status = st.empty()
+            log_placeholder = st.empty()
+            logs = []
 
             def on_progress(current, total, name):
-                progress.progress(current / total)
+                progress.progress((current + 1) / total)
                 status.text(f"수집 중: {name} ({current+1}/{total})")
 
             results = collect_batch(dart_key, target_df, years, on_progress)
             total_saved = sum(r["saved"] for r in results)
             st.success(f"완료: {total_saved:,}개 항목 저장")
+            st.rerun()
+
+    st.divider()
+
+    # ── 수집 기록 ─────────────────────────────────────────
+    st.subheader("수집 기록")
+    try:
+        client_log = get_client()
+        log_res = (client_log.table("financials")
+                   .select("stock_code, item, value, source, updated_at")
+                   .order("updated_at", desc=True)
+                   .limit(500)
+                   .execute())
+
+        if log_res.data:
+            log_df = pd.DataFrame(log_res.data)
+            stocks_map = dict(zip(stocks_df2["stock_code"], stocks_df2["name"])) if not stocks_df2.empty else {}
+            log_df["종목명"] = log_df["stock_code"].map(stocks_map).fillna(log_df["stock_code"])
+            log_df["수집일시"] = pd.to_datetime(log_df["updated_at"])
+
+            # 종목별 최근 수집일 + 수집항목수 + 수집내용(항목 목록)
+            summary = (log_df.groupby("종목명")
+                       .agg(
+                           최근수집일=("수집일시", "max"),
+                           수집항목수=("item", "count"),
+                           수집내용=("item", lambda x: ", ".join(sorted(x.unique())))
+                       )
+                       .reset_index()
+                       .sort_values("종목명"))
+
+            summary["최근수집일"] = summary["최근수집일"].dt.strftime("%Y-%m-%d %H:%M")
+            st.dataframe(summary, use_container_width=True, height=500)
+        else:
+            st.info("아직 수집 기록이 없습니다.")
+    except Exception as e:
+        st.error(f"기록 조회 오류: {e}")
 
 # ── Tab 4: 수동 입력 ──────────────────────────────────────
 with tab4:
