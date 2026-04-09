@@ -41,12 +41,15 @@ RANKING_ITEMS = [
     "매출총이익률", "판관비증가", "판관비율",
     "영익증가", "영익률",
     "순익증가", "순익률",
-    "EPS증가", "배당증가", "배당성향", "배당총액",
+    "EPS증가", "배당증가", "배당성향", "배당수익률",
     "ROE", "ROE평균",
     "부채비율", "주식수변동",
     "PER", "PBR", "EV/EBITDA", "Ey", "psr",
     "적정가격", "RIM가격", "기대수익률", "10년가격",
 ]
+
+# % 표시 제외 항목 (절대값/배수)
+NON_PCT_ITEMS = {"주식수변동", "Ey", "적정가격", "RIM가격", "psr", "PER", "PBR", "EV/EBITDA", "10년가격"}
 
 @st.cache_data(ttl=300, show_spinner="데이터 로딩 중...")
 def load_ranking_data(year, item):
@@ -117,7 +120,10 @@ st.caption(f"{sel_year}년 기준 | 총 {len(rank_df)}개 종목 중 {len(displa
 
 # ── 테이블 ────────────────────────────────────────────────
 st.dataframe(
-    display_df.style.format({sel_item: "{:,.0f}"}, na_rep="-"),
+    display_df.style.format(
+        {sel_item: "{:,.2f}" if sel_item in NON_PCT_ITEMS else "{:.1%}"},
+        na_rep="-"
+    ),
     use_container_width=True,
     height=500,
 )
@@ -134,12 +140,18 @@ st.divider()
 chart_n = min(30, len(display_df))
 chart_df = display_df.head(chart_n).copy()
 
+y_vals = chart_df[sel_item] if sel_item in NON_PCT_ITEMS else chart_df[sel_item] * 100
+chart_plot = chart_df.copy()
+chart_plot["_y"] = y_vals
+y_label = sel_item if sel_item in NON_PCT_ITEMS else f"{sel_item} (%)"
+
 fig = px.bar(
-    chart_df,
-    x="종목명", y=sel_item,
+    chart_plot,
+    x="종목명", y="_y",
     title=f"{sel_year}년 {sel_item} {'상위' if not ascending else '하위'} {chart_n}개",
-    color=sel_item,
+    color="_y",
     color_continuous_scale="Blues" if not ascending else "Reds_r",
+    labels={"_y": y_label},
 )
 fig.update_layout(
     height=450,
