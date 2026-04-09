@@ -5,50 +5,42 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from db import get_all_stocks, get_conn
+from db import get_all_stocks, get_client
 
 st.set_page_config(page_title="종목 상세", page_icon="🔍", layout="wide")
 st.header("종목 상세")
 
-# 손익 분기 항목 정의
 INCOME_ITEMS = ["매출액", "매출원가", "매출총이익", "판관비", "영업이익", "순이익", "EPS"]
 
-# 연간 그룹
 ANNUAL_GROUPS = {
     "재무상태표": ["자산총계", "자본총계", "부채비율", "현금성자산", "매출채권", "재고자산", "단기차입금"],
-    "현금흐름":   ["CFO", "주당CFO", "투자활동CF", "재무활동CF", "FCF", "주당FCF", "감가상각", "EBITDA", "현금증감"],
+    "현금흐름":   ["CFO", "주당CFO", "투자활동CF", "재무활동CF", "FCF", "주당FCF", "감가상각", "EBITDA"],
     "주주가치":   ["EPS", "EPS증가", "BPS", "DPS", "배당증가", "배당성향", "배당총액", "ROE", "ROE평균", "주식수"],
     "밸류에이션": ["PER", "PBR", "EV/EBITDA", "Ey", "psr", "적정가격", "RIM가격", "기대수익률", "10년가격"],
 }
 
 @st.cache_data(ttl=300, show_spinner="데이터 로딩 중...")
 def load_stock_data(stock_code):
-    conn = get_conn()
-    df = pd.read_sql("""
-        SELECT year, quarter, item, value
-        FROM financials
-        WHERE stock_code = ?
-        ORDER BY year, quarter, item
-    """, conn, params=(stock_code,))
-    conn.close()
-    return df
+    client = get_client()
+    res = (client.table("financials")
+           .select("year, quarter, item, value")
+           .eq("stock_code", stock_code)
+           .order("year")
+           .execute())
+    return pd.DataFrame(res.data) if res.data else pd.DataFrame()
 
 def make_quarter_table(df, item):
-    """항목 하나 → 연도×분기 테이블"""
-    sub = df[df["item"] == item].copy()
+    sub = df[(df["item"] == item) & (df["quarter"].isin([0,1,2,3,4]))].copy()
     if sub.empty:
         return None
-    sub = sub[sub["quarter"].isin([0,1,2,3,4])]
     q_map = {0:"연간", 1:"1Q", 2:"2Q", 3:"3Q", 4:"4Q"}
     sub["분기"] = sub["quarter"].map(q_map)
     pivot = sub.pivot_table(index="분기", columns="year", values="value", aggfunc="first")
-    # 행 순서 고정
     row_order = ["1Q", "2Q", "3Q", "4Q", "연간"]
     pivot = pivot.reindex([r for r in row_order if r in pivot.index])
     return pivot
 
 def make_quarter_series(df, items):
-    """여러 항목의 분기 시계열 → plotly용 리스트"""
     points = []
     sub = df[df["item"].isin(items) & df["quarter"].isin([1,2,3,4])]
     for _, row in sub.iterrows():
@@ -71,7 +63,6 @@ def load_price_quarterly(stock_code):
     except:
         return None
 
-# ── UI ───────────────────────────────────────────────────
 stocks_df = get_all_stocks()
 if stocks_df.empty:
     st.info("종목을 먼저 추가해주세요")
@@ -85,15 +76,12 @@ parent   = sel_row.get("parent_stock_code", "")
 if is_pref and parent:
     st.caption(f"우선주 | 주가: {sel_code}  |  재무: 보통주({parent}) 기준")
 
-# DB에서 이 종목 데이터 로드
 fin_df = load_stock_data(sel_code)
-
-# 우선주면 보통주 코드로 재무 조회
 if is_pref and parent and fin_df.empty:
     fin_df = load_stock_data(parent)
 
 if fin_df.empty:
-    st.warning("DB에 데이터가 없습니다. '데이터 수집' 또는 이관 스크립트를 먼저 실행해주세요.")
+    st.warning("DB에 데이터가 없습니다.")
     st.stop()
 
 years_available = sorted(fin_df["year"].unique())
@@ -101,7 +89,6 @@ st.caption(f"데이터: {min(years_available)}~{max(years_available)}년 | 총 {
 
 st.divider()
 
-# ── 1. 손익 분기 테이블 ───────────────────────────────────
 with st.expander("**손익계산서 (분기별)**", expanded=True):
     for item in INCOME_ITEMS:
         tbl = make_quarter_table(fin_df, item)
@@ -114,9 +101,7 @@ with st.expander("**손익계산서 (분기별)**", expanded=True):
             height=105,
         )
 
-# ── 2. 연간 그룹 ─────────────────────────────────────────
 for group_name, items in ANNUAL_GROUPS.items():
-    # 연간(quarter=0) 데이터만
     ann = fin_df[(fin_df["quarter"] == 0) & (fin_df["item"].isin(items))]
     if ann.empty:
         continue
@@ -130,13 +115,10 @@ for group_name, items in ANNUAL_GROUPS.items():
         )
 
 st.divider()
-
-# ── 3. 분기 그래프 ────────────────────────────────────────
 st.subheader("분기 그래프")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    # DB에 실제로 있는 분기 항목만 옵션으로
     available_items = fin_df[fin_df["quarter"].isin([1,2,3,4])]["item"].unique().tolist()
     default_sel = [i for i in ["매출액","영업이익","순이익"] if i in available_items]
     graph_items = st.multiselect(
@@ -153,7 +135,6 @@ if graph_items:
     if points:
         pts_df = pd.DataFrame(points)
         all_periods = sorted(pts_df["기간"].unique())
-
         fig = go.Figure()
         for item in graph_items:
             sub = pts_df[pts_df["항목"] == item].sort_values("기간")
@@ -166,7 +147,6 @@ if graph_items:
                     x=sub["기간"], y=sub["값"],
                     mode="lines+markers", name=item, line=dict(width=2),
                 ))
-
         fig.update_layout(
             title=f"{sel_name} — 분기별",
             xaxis=dict(tickangle=-45, tickvals=all_periods[::4]),
@@ -178,7 +158,6 @@ if graph_items:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-# ── 4. 주가 (분기 말) ─────────────────────────────────────
 if show_price:
     price_s = load_price_quarterly(sel_code)
     if price_s is not None and not price_s.empty:
@@ -199,4 +178,4 @@ if show_price:
         )
         st.plotly_chart(fig2, use_container_width=True)
     else:
-        st.info("주가 로딩 실패 — FinanceDataReader가 설치되어 있어야 합니다")
+        st.info("주가 데이터를 불러올 수 없습니다")
