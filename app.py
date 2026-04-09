@@ -72,7 +72,7 @@ st.markdown("""
 .menu-item {
     font-size: 28px;
     font-weight: 500;
-    color: rgba(255,255,255,0.75);
+    color: rgba(255,255,255,0.45);
     text-decoration: none;
     letter-spacing: -0.5px;
     padding: 6px 0;
@@ -91,8 +91,8 @@ st.markdown("""
     bottom: 0;
     left: 0;
     width: 0;
-    height: 1.5px;
-    background: linear-gradient(90deg, #0078ff, #00d4aa);
+    height: 1px;
+    background: rgba(255,255,255,0.6);
     transition: width 0.3s ease;
 }
 
