@@ -20,7 +20,7 @@ ANNUAL_GROUPS = {
     "밸류에이션": ["PER", "PBR", "EV/EBITDA", "Ey", "psr", "적정가격", "RIM가격", "기대수익률", "10년가격"],
 }
 
-PREFERRED_ITEMS = ["매출액", "영업이익", "순이익", "DPS", "EPS", "CFO", "FCF", "매출총이익", "판관비"]
+PREFERRED_ITEMS = ["매출액", "영업이익", "순이익", "DPS", "BPS", "EPS", "CFO", "FCF", "매출총이익", "판관비"]
 
 @st.cache_data(ttl=300, show_spinner="데이터 로딩 중...")
 def load_stock_data(stock_code):
@@ -195,7 +195,6 @@ with st.expander("**손익계산서 (분기별)**", expanded=True):
         st.dataframe(
             tbl.style.format("{:,.1f}", na_rep="-"),
             use_container_width=True,
-            height=105,
         )
 
 # ── 2. 연간 그룹 ─────────────────────────────────────────
@@ -209,7 +208,7 @@ for group_name, items in ANNUAL_GROUPS.items():
         st.dataframe(
             pivot.style.format("{:,.2f}", na_rep="-"),
             use_container_width=True,
-            height=min(60 + len(pivot) * 38, 420),
+
         )
 
 st.divider()
