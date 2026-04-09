@@ -47,6 +47,7 @@ def make_wide_table(df, item):
 def make_quarter_series(df, items):
     points = []
     sub = df[df["item"].isin(items) & df["quarter"].isin([1,2,3,4])]
+    sub = sub.sort_values(["year", "quarter"])
     for _, row in sub.iterrows():
         points.append({
             "기간": f"{int(row['year'])}Q{int(row['quarter'])}",
@@ -67,11 +68,21 @@ def load_price_quarterly(stock_code):
     except:
         return None
 
+def sort_periods(periods):
+    """2014Q1 형식의 기간을 올바르게 정렬"""
+    def key(p):
+        try:
+            y, q = p.split("Q")
+            return int(y) * 10 + int(q)
+        except:
+            return 0
+    return sorted(periods, key=key)
+
 def make_combined_fig(pts_df, graph_items, price_s, sel_name, chart_type):
     """재무지표 + 주가 이중축 통합 차트"""
-    all_periods = sorted(pts_df["기간"].unique()) if not pts_df.empty else []
+    all_periods = sort_periods(pts_df["기간"].unique()) if not pts_df.empty else []
     if price_s is not None:
-        all_periods = sorted(set(all_periods) | set(price_s.index))
+        all_periods = sort_periods(set(all_periods) | set(price_s.index))
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -98,7 +109,7 @@ def make_combined_fig(pts_df, graph_items, price_s, sel_name, chart_type):
 
     fig.update_layout(
         title=f"{sel_name} — 분기별 재무 + 주가",
-        xaxis=dict(tickangle=-45, tickvals=all_periods[::4]),
+        xaxis=dict(tickangle=-45, tickvals=all_periods[::4], categoryorder="array", categoryarray=all_periods),
         barmode="group",
         hovermode="x unified",
         height=500,
