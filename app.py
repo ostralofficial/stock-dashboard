@@ -30,8 +30,6 @@ st.markdown("""
 [data-testid="stSidebar"] { display: none !important; }
 [data-testid="collapsedControl"] { display: none !important; }
 [data-testid="stVerticalBlock"] { position: relative; z-index: 1; }
-#MainMenu, footer { visibility: hidden; }
-[data-testid="collapsedControl"] { display: none; }
 [data-testid="stMainBlockContainer"] { padding: 0 !important; }
 
 .layout {
@@ -55,86 +53,65 @@ st.markdown("""
     -webkit-text-fill-color: transparent;
 }
 
-
-
 .right {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     align-items: flex-end;
 }
 
-a.menu-item, a.menu-item:visited, a.menu-item:link {
+/* 메뉴 버튼 스타일 */
+div[data-testid="stButton"] > button {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    font-family: 'Space Grotesk', sans-serif !important;
+    font-size: 28px !important;
+    font-weight: 500 !important;
     color: rgba(255,255,255,0.45) !important;
-    text-decoration: none !important;
+    padding: 6px 0 !important;
+    border-radius: 0 !important;
+    border-bottom: 1.5px solid transparent !important;
+    transition: all 0.25s !important;
+    text-align: right !important;
+    width: auto !important;
+    letter-spacing: -0.5px !important;
 }
-a.menu-item:hover {
+div[data-testid="stButton"] > button:hover {
     color: #ffffff !important;
-    text-decoration: none !important;
+    border-bottom: 1.5px solid rgba(255,255,255,0.5) !important;
+    background: transparent !important;
 }
-
-.menu-item {
-    font-size: 28px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.45);
-    text-decoration: none;
-    letter-spacing: -0.5px;
-    padding: 6px 0;
-    position: relative;
-    transition: color 0.25s;
-    cursor: pointer;
-    font-family: 'Space Grotesk', sans-serif;
-    background: none;
-    border: none;
-    display: inline-block;
-}
-
-.menu-item::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 0;
-    height: 1px;
-    background: rgba(255,255,255,0.6);
-    transition: width 0.3s ease;
-}
-
-.menu-item:hover {
-    color: #ffffff;
-}
-
-.menu-item:hover::after {
-    width: 100%;
-}
-
-.menu-item.disabled {
-    color: rgba(255,255,255,0.25);
-    cursor: default;
-    font-size: 22px;
-}
-
-.menu-item.disabled:hover { color: rgba(255,255,255,0.25); }
-.menu-item.disabled::after { display: none; }
-
-.coming-tag {
-    font-size: 10px;
-    color: rgba(255,200,80,0.6);
-    letter-spacing: 2px;
-    margin-left: 10px;
-    font-weight: 300;
+div[data-testid="stButton"] > button:disabled {
+    color: rgba(255,255,255,0.2) !important;
+    font-size: 22px !important;
+    cursor: default !important;
 }
 </style>
-
-<div class="layout">
-    <div class="left">
-        <h1>Ostral</h1>
-        </div>
-    <div class="right">
-        <a class="menu-item" href="/종목_상세" target="_self">Detail</a>
-        <a class="menu-item" href="/전체_랭킹" target="_self">Screening</a>
-        <span class="menu-item disabled">Grow <span class="coming-tag">SOON</span></span>
-        <a class="menu-item" href="/설정" target="_self">Setting</a>
-    </div>
-</div>
 """, unsafe_allow_html=True)
+
+# ── 레이아웃 ─────────────────────────────────────────────
+col_left, col_right = st.columns([3, 1])
+
+with col_left:
+    st.markdown("""
+    <div style="display:flex; align-items:center; min-height:100vh; padding-left:2vw;">
+        <h1 style="font-family:'Space Grotesk',sans-serif; font-size:72px; font-weight:700;
+                   letter-spacing:-3px; margin:0; background:linear-gradient(90deg,#fff,#7ec8e3);
+                   -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Ostral</h1>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_right:
+    st.markdown("<div style='min-height:30vh'></div>", unsafe_allow_html=True)
+
+    if st.button("Detail", key="btn_detail", use_container_width=False):
+        st.switch_page("pages/1_종목_상세.py")
+
+    if st.button("Screening", key="btn_screening", use_container_width=False):
+        st.switch_page("pages/2_전체_랭킹.py")
+
+    st.button("Grow  soon", key="btn_grow", disabled=True, use_container_width=False)
+
+    if st.button("Setting", key="btn_setting", use_container_width=False):
+        st.switch_page("pages/3_설정.py")
