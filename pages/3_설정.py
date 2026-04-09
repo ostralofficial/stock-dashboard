@@ -137,9 +137,33 @@ with tab3:
 
         if st.button("수집 시작", type="primary"):
             from dart_collector import collect_batch
+            import datetime
+
             target_df = stocks_df2[stocks_df2["name"].isin(target_names)][
                 ["stock_code", "corp_code", "name"]
             ].reset_index(drop=True)
+
+            # 최근 수집 시각 조회 → 오래된 종목부터 수집
+            client_tmp = get_client()
+            res = client_tmp.table("financials").select(
+                "stock_code, updated_at"
+            ).in_("stock_code", target_df["stock_code"].tolist()).order(
+                "updated_at", desc=True
+            ).execute()
+
+            if res.data:
+                # 최근 수집된 종목 순서 (내림차순) → 뒤로 보냄
+                recent = {}
+                for r in res.data:
+                    if r["stock_code"] not in recent:
+                        recent[r["stock_code"]] = r["updated_at"]
+                # 오래된 순서로 정렬 (없는 종목 = 한번도 안 된 것 → 최우선)
+                def sort_key(row):
+                    return recent.get(row["stock_code"], "0000-00-00")
+                target_df = target_df.iloc[
+                    sorted(range(len(target_df)), key=lambda i: sort_key(target_df.iloc[i]))
+                ].reset_index(drop=True)
+                st.info(f"가장 오래전에 수집된 종목부터 수집합니다. 첫 번째: {target_df.iloc[0]['name']}")
 
             progress = st.progress(0)
             status = st.empty()
