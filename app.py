@@ -12,8 +12,23 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=Space+Grotesk:wght@300;500;700&display=swap');
 
 [data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #0a0e1a 0%, #0d1f3c 50%, #0a1628 100%);
+    background-image: url("https://raw.githubusercontent.com/ostralofficial/stock-dashboard/main/Screenshot_20240304_054553_Naver%20Blog.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
     min-height: 100vh;
+}
+[data-testid="stAppViewContainer"]::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 10, 20, 0.72);
+    z-index: 0;
+}
+[data-testid="stVerticalBlock"] {
+    position: relative;
+    z-index: 1;
 }
 [data-testid="stHeader"] { background: transparent; }
 #MainMenu, footer { visibility: hidden; }
@@ -101,7 +116,7 @@ col1, col2 = st.columns(2, gap="medium")
 
 with col1:
     if st.button(
-        "🔍\n\nDetail\n\n개별 종목의 분기별 재무 데이터와\n주가 추이를 한눈에 확인\n\n↗",
+        "Detail\n\n개별 종목의 분기별 재무 데이터와\n주가 추이를 한눈에 확인\n\n↗",
         key="btn_stock",
         use_container_width=True,
     ):
@@ -109,7 +124,7 @@ with col1:
 
 with col2:
     if st.button(
-        "📊\n\nScreening\n\nROE, 영익률 등 항목별로\n전체 종목을 정렬하여 비교\n\n↗",
+        "Screening\n\nROE, 영익률 등 항목별로\n전체 종목을 정렬하여 비교\n\n↗",
         key="btn_rank",
         use_container_width=True,
     ):
@@ -119,7 +134,7 @@ col3, col4 = st.columns(2, gap="medium")
 
 with col3:
     st.button(
-        "🌱\n\nGrow  — COMING SOON\n\n성장성 분석 및 투자 인사이트\n준비 중입니다\n\n↗",
+        "Grow  — COMING SOON\n\n성장성 분석 및 투자 인사이트\n준비 중입니다\n\n↗",
         key="btn_grow",
         use_container_width=True,
         disabled=True,
@@ -127,7 +142,7 @@ with col3:
 
 with col4:
     if st.button(
-        "⚙️\n\nSetting\n\nDART API 키 설정 및\n데이터 수집 관리\n\n↗",
+        "Setting\n\nDART API 키 설정 및\n데이터 수집 관리\n\n↗",
         key="btn_setting",
         use_container_width=True,
     ):
