@@ -69,6 +69,15 @@ st.markdown("""
     align-items: flex-end;
 }
 
+a.menu-item, a.menu-item:visited, a.menu-item:link {
+    color: rgba(255,255,255,0.45) !important;
+    text-decoration: none !important;
+}
+a.menu-item:hover {
+    color: #ffffff !important;
+    text-decoration: none !important;
+}
+
 .menu-item {
     font-size: 28px;
     font-weight: 500;
