@@ -1,0 +1,20 @@
+# DB 파일 (로컬 데이터 - 올리면 안됨)
+stock_data.db
+
+# API 키 설정 파일
+config.json
+
+# 엑셀 원본 (용량 크고 민감)
+EPS-ACCUM.xlsx
+
+# Python 캐시
+__pycache__/
+*.pyc
+*.pyo
+
+# Streamlit 캐시
+.streamlit/
+
+# 윈도우 시스템 파일
+Thumbs.db
+desktop.ini
