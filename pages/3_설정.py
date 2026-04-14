@@ -199,46 +199,46 @@ with tab3:
             st.info(f"미수집: {len(not_collected)}개 → 수집완료: {len(collected)}개 | 첫 번째: {first_name}")
 
             progress = st.progress(0)
-            status = st.empty()
-            log_placeholder = st.empty()
-            logs = []
+            status_txt = st.empty()
+
+            # 실시간 로그 테이블
+            st.markdown("**실시간 수집 현황**")
+            live_log_area = st.empty()
+            live_logs = []  # {"종목명", "수집항목수", "수집일시", "상태"}
 
             def on_progress(current, total, name):
                 progress.progress((current + 1) / total)
-                status.text(f"수집 중: {name} ({current+1}/{total})")
+                status_txt.text(f"수집 중: {name} ({current+1}/{total})")
 
-            results = collect_batch(dart_key, target_df, years, on_progress)
+            def on_log(record):
+                if record["item_count"] > 0:
+                    live_logs.append({
+                        "종목명": record["name"],
+                        "수집항목": record["item_count"],
+                        "수집일시": record["collected_at"],
+                        "상태": "✅",
+                    })
+                else:
+                    live_logs.append({
+                        "종목명": record["name"],
+                        "수집항목": 0,
+                        "수집일시": record["collected_at"],
+                        "상태": "⚠️ " + (record["errors"][0][:30] if record["errors"] else "데이터없음"),
+                    })
+                # 최근 20개만 표시 (최신이 위)
+                display = list(reversed(live_logs[-20:]))
+                live_log_area.dataframe(
+                    pd.DataFrame(display),
+                    use_container_width=True,
+                    height=min(60 + len(display) * 35, 400),
+                )
+
+            results = collect_batch(dart_key, target_df, years, on_progress, on_log)
             total_saved = sum(r["saved"] for r in results)
             total_errors = [e for r in results for e in r.get("errors", [])]
 
-            # stock_code 빠른 조회용 딕셔너리
-            name_to_code = dict(zip(target_df["name"], target_df["stock_code"]))
-
-            # 수집 기록 저장
-            from datetime import datetime
-            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-            log_records = []
-            for r in results:
-                if r["saved"] > 0:
-                    code = name_to_code.get(r["name"], "")
-                    if not code:
-                        continue
-                    log_records.append({
-                        "stock_code": code,
-                        "name": r["name"],
-                        "collected_at": now_str,
-                        "item_count": r["saved"],
-                        "years": f"{years[0]}~{years[-1]}",
-                    })
-
-            if log_records:
-                try:
-                    get_client().table("collect_log").insert(log_records).execute()
-                except Exception as log_err:
-                    st.warning(f"수집 기록 저장 실패: {log_err}")
-
             if total_saved > 0:
-                st.success(f"✅ 완료: {total_saved:,}개 항목 저장 | 기록 {len(log_records)}개 저장됨")
+                st.success(f"✅ 완료: {total_saved:,}개 항목 저장 | {sum(1 for r in results if r['saved'] > 0)}개 종목 기록됨")
             else:
                 st.error("⚠️ 저장된 항목이 없습니다. API 키 또는 corp_code를 확인해주세요.")
 
