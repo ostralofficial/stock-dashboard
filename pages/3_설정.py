@@ -116,7 +116,42 @@ with tab3:
         years = list(range(year_range[0], year_range[1] + 1))
 
         n = len(stocks_df2)
-        st.caption(f"전체 {n}개 종목 · 오래된 순서부터 자동 수집")
+        st.caption(f"전체 {n}개 종목 · 미수집 종목 우선 자동 수집")
+
+        # ── 단일 종목 테스트 ──────────────────────────────
+        with st.expander("🔬 단일 종목 테스트 (문제 진단용)", expanded=False):
+            test_name = st.selectbox("테스트할 종목", stocks_df2["name"].tolist(), key="test_stock")
+            test_row = stocks_df2[stocks_df2["name"] == test_name].iloc[0]
+            st.caption(f"stock_code: `{test_row['stock_code']}` | corp_code: `{test_row['corp_code']}`")
+            test_year = st.selectbox("테스트 연도", list(range(2025, 2013, -1)), index=2, key="test_year")
+
+            if st.button("테스트 수집", key="btn_test"):
+                from dart_collector import fetch_financial_statements
+                with st.spinner("DART API 호출 중..."):
+                    try:
+                        result = fetch_financial_statements(dart_key, test_row["corp_code"], test_year)
+                        if result:
+                            st.success(f"✅ {len(result)}개 항목 수신 성공!")
+                            st.json(result)
+                            # DB 저장 테스트
+                            try:
+                                client_test = get_client()
+                                batch = [{"stock_code": test_row["stock_code"], "year": int(test_year),
+                                          "quarter": 0, "item": k, "value": float(v), "source": "DART"}
+                                         for k, v in result.items()]
+                                res = client_test.table("financials").upsert(
+                                    batch, on_conflict="stock_code,year,quarter,item"
+                                ).execute()
+                                if res.data is not None:
+                                    st.success(f"✅ DB 저장 성공! ({len(batch)}행)")
+                                else:
+                                    st.error("❌ DB 저장 응답 없음")
+                            except Exception as db_err:
+                                st.error(f"❌ DB 저장 실패: {db_err}")
+                        else:
+                            st.warning("⚠️ DART에서 데이터 없음 — corp_code 또는 연도를 확인해주세요")
+                    except Exception as api_err:
+                        st.error(f"❌ API 오류: {api_err}")
 
         if st.button("수집 시작", type="primary"):
             from dart_collector import collect_batch
@@ -161,6 +196,10 @@ with tab3:
 
             results = collect_batch(dart_key, target_df, years, on_progress)
             total_saved = sum(r["saved"] for r in results)
+            total_errors = [e for r in results for e in r.get("errors", [])]
+
+            # stock_code 빠른 조회용 딕셔너리
+            name_to_code = dict(zip(target_df["name"], target_df["stock_code"]))
 
             # 수집 기록 저장
             from datetime import datetime
@@ -168,17 +207,33 @@ with tab3:
             log_records = []
             for r in results:
                 if r["saved"] > 0:
+                    code = name_to_code.get(r["name"], "")
+                    if not code:
+                        continue
                     log_records.append({
-                        "stock_code": target_df[target_df["name"]==r["name"]]["stock_code"].values[0] if r["name"] in target_df["name"].values else "",
+                        "stock_code": code,
                         "name": r["name"],
                         "collected_at": now_str,
                         "item_count": r["saved"],
                         "years": f"{years[0]}~{years[-1]}",
                     })
-            if log_records:
-                get_client().table("collect_log").insert(log_records).execute()
 
-            st.success(f"완료: {total_saved:,}개 항목 저장")
+            if log_records:
+                try:
+                    get_client().table("collect_log").insert(log_records).execute()
+                except Exception as log_err:
+                    st.warning(f"수집 기록 저장 실패: {log_err}")
+
+            if total_saved > 0:
+                st.success(f"✅ 완료: {total_saved:,}개 항목 저장 | 기록 {len(log_records)}개 저장됨")
+            else:
+                st.error("⚠️ 저장된 항목이 없습니다. API 키 또는 corp_code를 확인해주세요.")
+
+            if total_errors:
+                with st.expander(f"⚠️ 오류 {len(total_errors)}건 보기"):
+                    for e in total_errors[:50]:
+                        st.text(e)
+
             st.rerun()
 
     st.divider()
