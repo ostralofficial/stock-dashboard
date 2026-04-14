@@ -38,6 +38,8 @@ CASHFLOW_MAP = {
 
 def fetch_financial_statements(api_key, corp_code, year, report_code="11011"):
     results = {}
+    debug_info = []  # 디버그용 상태 기록
+
     for fs_div, mapping in [
         ("IS", INCOME_MAP),
         ("BS", BALANCE_MAP),
@@ -56,15 +58,21 @@ def fetch_financial_statements(api_key, corp_code, year, report_code="11011"):
                 timeout=15,
             )
             data = resp.json()
-            if data.get("status") != "000":
+            status = data.get("status", "???")
+            message = data.get("message", "")
+            debug_info.append(f"{fs_div}: status={status} ({message})")
+
+            if status != "000":
                 continue
+
             for row in data.get("list", []):
                 acnt = row.get("account_nm", "").strip()
                 our_name = mapping.get(acnt)
                 if not our_name:
                     continue
-                val_str = row.get("thstrm_amount", "").replace(",", "").replace("-", "")
-                if not val_str:
+                # ✅ 버그 수정: 쉼표만 제거, 마이너스(음수) 부호는 유지
+                val_str = row.get("thstrm_amount", "").replace(",", "").strip()
+                if not val_str or val_str == "-":
                     continue
                 try:
                     results[our_name] = float(val_str)
@@ -72,8 +80,12 @@ def fetch_financial_statements(api_key, corp_code, year, report_code="11011"):
                     pass
             time.sleep(0.3)
         except Exception as e:
+            debug_info.append(f"{fs_div}: 예외 발생 - {e}")
             print(f"  오류 ({fs_div}): {e}")
+
+    results["__debug__"] = debug_info
     return results
+
 
 def collect_stock(api_key, stock_code, corp_code, years, client):
     """한 종목 수집 후 Supabase에 직접 저장"""
@@ -83,32 +95,47 @@ def collect_stock(api_key, stock_code, corp_code, years, client):
 
     for year in years:
         try:
-            items = fetch_financial_statements(api_key, corp_code, year)
+            raw = fetch_financial_statements(api_key, corp_code, year)
+            debug = raw.pop("__debug__", [])
+            items = raw
+
+            if not items:
+                # debug_info로 실패 원인 기록
+                for d in debug:
+                    if "status" in d and "000" not in d:
+                        errors.append(f"{year}: {d}")
+                if not errors or errors[-1].split(":")[0] != str(year):
+                    errors.append(f"{year}: DART 데이터 없음 (corp_code={corp_code})")
+                continue
+
             for item, value in items.items():
                 batch.append({
                     "stock_code": stock_code,
-                    "year": year,
+                    "year": int(year),
                     "quarter": 0,
                     "item": item,
-                    "value": value,
+                    "value": float(value),
                     "source": "DART",
                 })
-            saved += len(items)
         except Exception as e:
             errors.append(f"{year}: {str(e)}")
 
     # Supabase에 배치 저장
     if batch:
         try:
-            client.table("financials").upsert(
+            res = client.table("financials").upsert(
                 batch,
                 on_conflict="stock_code,year,quarter,item"
             ).execute()
+            if res.data is not None:
+                saved = len(batch)
+            else:
+                errors.append("저장오류: upsert 응답 없음")
         except Exception as e:
             errors.append(f"저장오류: {str(e)}")
-            saved = 0
 
     return saved, errors
+
 
 def collect_batch(api_key, stocks_df, years, progress_callback=None):
     from db import get_client
