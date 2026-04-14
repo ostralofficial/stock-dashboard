@@ -38,7 +38,7 @@ CASHFLOW_MAP = {
 
 def fetch_financial_statements(api_key, corp_code, year, report_code="11011"):
     results = {}
-    debug_info = []  # 디버그용 상태 기록
+    debug_info = []
 
     for fs_div, mapping in [
         ("IS", INCOME_MAP),
@@ -70,7 +70,6 @@ def fetch_financial_statements(api_key, corp_code, year, report_code="11011"):
                 our_name = mapping.get(acnt)
                 if not our_name:
                     continue
-                # ✅ 버그 수정: 쉼표만 제거, 마이너스(음수) 부호는 유지
                 val_str = row.get("thstrm_amount", "").replace(",", "").strip()
                 if not val_str or val_str == "-":
                     continue
@@ -100,11 +99,10 @@ def collect_stock(api_key, stock_code, corp_code, years, client):
             items = raw
 
             if not items:
-                # debug_info로 실패 원인 기록
                 for d in debug:
                     if "status" in d and "000" not in d:
                         errors.append(f"{year}: {d}")
-                if not errors or errors[-1].split(":")[0] != str(year):
+                if not any(str(year) in e for e in errors):
                     errors.append(f"{year}: DART 데이터 없음 (corp_code={corp_code})")
                 continue
 
@@ -120,7 +118,6 @@ def collect_stock(api_key, stock_code, corp_code, years, client):
         except Exception as e:
             errors.append(f"{year}: {str(e)}")
 
-    # Supabase에 배치 저장
     if batch:
         try:
             res = client.table("financials").upsert(
@@ -137,10 +134,15 @@ def collect_stock(api_key, stock_code, corp_code, years, client):
     return saved, errors
 
 
-def collect_batch(api_key, stocks_df, years, progress_callback=None):
+def collect_batch(api_key, stocks_df, years, progress_callback=None, log_callback=None):
+    """
+    log_callback(record): 종목 하나 완료 시 즉시 호출
+      record = {"stock_code", "name", "collected_at", "item_count", "years", "errors"}
+    """
     from db import get_client
-    client = get_client()
+    from datetime import datetime
 
+    client = get_client()
     total = len(stocks_df)
     results = []
 
@@ -151,6 +153,34 @@ def collect_batch(api_key, stocks_df, years, progress_callback=None):
         saved, errors = collect_stock(
             api_key, row.stock_code, row.corp_code, years, client
         )
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        record = {
+            "stock_code": row.stock_code,
+            "name": row.name,
+            "collected_at": now_str,
+            "item_count": saved,
+            "years": f"{years[0]}~{years[-1]}",
+            "errors": errors,
+        }
+
+        # 종목 완료 즉시 DB에 기록 저장
+        if saved > 0:
+            try:
+                client.table("collect_log").insert({
+                    "stock_code": record["stock_code"],
+                    "name": record["name"],
+                    "collected_at": record["collected_at"],
+                    "item_count": record["item_count"],
+                    "years": record["years"],
+                }).execute()
+            except Exception as e:
+                errors.append(f"기록저장오류: {str(e)}")
+
+        # UI 콜백 (실시간 표시용)
+        if log_callback:
+            log_callback(record)
+
         results.append({
             "name": row.name,
             "stock_code": row.stock_code,
