@@ -337,7 +337,7 @@ with tab5:
     st.caption("DART 수집 데이터를 바탕으로 PER, PBR, ROE, ROIC, 적정가격 등을 계산해 DB에 저장합니다.")
 
     # ── BBB 채권 수익률 설정 ──────────────────────────────
-    st.markdown("**BBB 5년채 수익률 설정**")
+    st.markdown("**BBB 5년채 수익률 설정**&nbsp;&nbsp;&nbsp;[채권수익률 확인 ↗ 한국신용평가](https://www.kisrating.com/ratingsStatistics/statics_spread.do)")
 
     # pykrx로 자동 조회
     auto_bbb = None
