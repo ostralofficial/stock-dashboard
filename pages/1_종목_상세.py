@@ -356,7 +356,7 @@ if graph_items or (show_price and price_s is not None):
         )
         st.download_button(
             label="데이터 CSV 다운로드",
-            data=csv_data.to_csv(encoding="utf-8-sig"),
+            data=csv_data.to_csv().encode("cp949", errors="replace"),
             file_name=f"{sel_name}_재무데이터.csv",
             mime="text/csv",
         )
