@@ -200,7 +200,11 @@ if stocks_df.empty:
     st.info("종목을 먼저 추가해주세요")
     st.stop()
 
-sel_name = st.selectbox("종목 선택", options=stocks_df["name"].tolist())
+# Grow 페이지에서 넘어온 종목 자동 선택
+_names = stocks_df["name"].tolist()
+_default_name = st.session_state.pop("detail_stock", None)
+_default_idx = _names.index(_default_name) if _default_name and _default_name in _names else 0
+sel_name = st.selectbox("종목 선택", options=_names, index=_default_idx)
 sel_row  = stocks_df[stocks_df["name"] == sel_name].iloc[0]
 sel_code = sel_row["stock_code"]
 is_pref  = int(sel_row.get("is_preferred", 0))
