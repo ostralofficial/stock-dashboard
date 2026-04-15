@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
-import FinanceDataReader as fdr
-from datetime import datetime, timedelta
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from db import get_all_stocks
+from db import get_all_stocks, get_client
 
 st.set_page_config(page_title="52 Week", page_icon="📅", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
@@ -32,80 +30,60 @@ with st.container():
 
 st.header("52 Week")
 
-# ── 데이터 로드 ───────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner="52주 데이터 로딩 중...")
-def load_52week_data():
-    stocks = get_all_stocks()
-    if stocks.empty:
-        return pd.DataFrame()
+@st.cache_data(ttl=1800, show_spinner="데이터 로딩 중...")
+def load_52week_from_db():
+    client = get_client()
+    # 가장 최신 날짜 조회
+    res_date = (client.table("week52")
+                .select("date")
+                .order("date", desc=True)
+                .limit(1)
+                .execute())
+    if not res_date.data:
+        return pd.DataFrame(), None
 
-    end = datetime.today()
-    start = end - timedelta(weeks=52)
-    end_str   = end.strftime("%Y-%m-%d")
-    start_str = start.strftime("%Y-%m-%d")
+    latest_date = res_date.data[0]["date"]
 
-    rows = []
-    progress = st.progress(0)
-    status = st.empty()
-    total = len(stocks)
+    res = (client.table("week52")
+           .select("stock_code, name, close, high_52, low_52, return_52, pct_from_high, pct_from_low")
+           .eq("date", latest_date)
+           .execute())
 
-    for i, (_, row) in enumerate(stocks.iterrows()):
-        progress.progress((i + 1) / total)
-        status.text(f"조회 중: {row['name']} ({i+1}/{total})")
-        try:
-            df = fdr.DataReader(row["stock_code"], start_str, end_str)
-            if df is None or df.empty or len(df) < 20:
-                continue
-            high_52  = df["High"].max()
-            low_52   = df["Low"].min()
-            close_now = float(df["Close"].iloc[-1])
-            close_1y  = float(df["Close"].iloc[0])
+    if not res.data:
+        return pd.DataFrame(), latest_date
 
-            ret_52 = (close_now - close_1y) / close_1y if close_1y != 0 else None
-            pct_from_high = (close_now - high_52) / high_52 if high_52 != 0 else None
-            pct_from_low  = (close_now - low_52)  / low_52  if low_52  != 0 else None
+    df = pd.DataFrame(res.data)
+    df.columns = ["종목코드", "종목명", "현재가", "52주최고", "52주최저",
+                  "52주수익률", "고가대비", "저가대비"]
+    return df, latest_date
 
-            rows.append({
-                "stock_code": row["stock_code"],
-                "종목명": row["name"],
-                "현재가": close_now,
-                "52주최고": high_52,
-                "52주최저": low_52,
-                "52주수익률": ret_52,
-                "고가대비": pct_from_high,
-                "저가대비": pct_from_low,
-            })
-        except Exception:
-            continue
+# ── 헤더 & 새로고침 ───────────────────────────────────────
+df_52, latest_date = load_52week_from_db()
 
-    progress.empty()
-    status.empty()
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
-
-# ── 새로고침 버튼 ─────────────────────────────────────────
 col_h, col_btn = st.columns([6, 1])
 with col_h:
-    st.caption(f"기준일: {datetime.today().strftime('%Y-%m-%d')} | 데이터는 1시간 캐시")
+    if latest_date:
+        st.caption(f"기준일: {latest_date} | 매일 15:00 자동 업데이트 | 30분 캐시")
+    else:
+        st.caption("데이터 없음 — GitHub Actions가 아직 실행되지 않았을 수 있어요")
 with col_btn:
     if st.button("🔄 새로고침"):
         st.cache_data.clear()
         st.rerun()
 
-df_52 = load_52week_data()
-
 if df_52.empty:
-    st.warning("데이터를 불러올 수 없습니다. 종목을 먼저 추가해주세요.")
+    st.warning("52주 데이터가 없습니다.")
+    st.info("GitHub Actions가 설정되면 매일 15시에 자동으로 데이터가 쌓여요.\n수동으로 실행하려면 GitHub → Actions → Update 52Week Data → Run workflow를 클릭하세요.")
     st.stop()
 
-# 종목상세 이동 헬퍼
-def detail_btn(stock_code, name, key):
-    if st.button("상세 →", key=key):
-        st.session_state["detail_stock"] = name
-        st.switch_page("pages/1_종목_상세.py")
+# 종목상세 이동
+def go_detail(name):
+    st.session_state["detail_stock"] = name
+    st.switch_page("pages/1_종목_상세.py")
 
 # ── 1. 52주 최고가 근접 종목 ─────────────────────────────
 st.subheader("52주 최고가 근접 종목")
-st.caption("현재가가 52주 최고가에 가까운 순 (고가대비 하락폭이 작은 순)")
+st.caption("현재가가 52주 최고가에 가까운 순")
 
 high_df = (df_52.dropna(subset=["고가대비"])
            .sort_values("고가대비", ascending=False)
@@ -113,11 +91,11 @@ high_df = (df_52.dropna(subset=["고가대비"])
 high_df.index += 1
 
 display_high = high_df[["종목명", "현재가", "52주최고", "고가대비", "52주수익률"]].copy()
-display_high.columns = ["종목명", "현재가", "52주최고", "고가대비(%)", "52주수익률(%)"]
-display_high["고가대비(%)"] = (display_high["고가대비(%)"] * 100).round(1)
-display_high["52주수익률(%)"] = (display_high["52주수익률(%)"] * 100).round(1)
+display_high["고가대비(%)"] = (display_high["고가대비"] * 100).round(1)
+display_high["52주수익률(%)"] = (display_high["52주수익률"] * 100).round(1)
 display_high["현재가"] = display_high["현재가"].map("{:,.0f}".format)
 display_high["52주최고"] = display_high["52주최고"].map("{:,.0f}".format)
+display_high = display_high[["종목명", "현재가", "52주최고", "고가대비(%)", "52주수익률(%)"]]
 
 st.dataframe(
     display_high.style.background_gradient(subset=["고가대비(%)"], cmap="Blues"),
@@ -125,21 +103,20 @@ st.dataframe(
     height=450,
 )
 
-# 종목 선택 → 상세 이동
 sel_high = st.selectbox(
     "종목 선택 후 상세 보기",
     ["선택하세요"] + high_df["종목명"].tolist(),
     key="sel_high"
 )
 if sel_high != "선택하세요":
-    row = high_df[high_df["종목명"] == sel_high].iloc[0]
-    detail_btn(row["stock_code"], sel_high, key="btn_high_detail")
+    if st.button("종목 상세 →", key="btn_high"):
+        go_detail(sel_high)
 
 st.divider()
 
 # ── 2. 52주 최저가 근접 종목 ─────────────────────────────
 st.subheader("52주 최저가 근접 종목")
-st.caption("현재가가 52주 최저가에 가까운 순 (저가대비 상승폭이 작은 순)")
+st.caption("현재가가 52주 최저가에 가까운 순")
 
 low_df = (df_52.dropna(subset=["저가대비"])
           .sort_values("저가대비", ascending=True)
@@ -147,11 +124,11 @@ low_df = (df_52.dropna(subset=["저가대비"])
 low_df.index += 1
 
 display_low = low_df[["종목명", "현재가", "52주최저", "저가대비", "52주수익률"]].copy()
-display_low.columns = ["종목명", "현재가", "52주최저", "저가대비(%)", "52주수익률(%)"]
-display_low["저가대비(%)"] = (display_low["저가대비(%)"] * 100).round(1)
-display_low["52주수익률(%)"] = (display_low["52주수익률(%)"] * 100).round(1)
+display_low["저가대비(%)"] = (display_low["저가대비"] * 100).round(1)
+display_low["52주수익률(%)"] = (display_low["52주수익률"] * 100).round(1)
 display_low["현재가"] = display_low["현재가"].map("{:,.0f}".format)
 display_low["52주최저"] = display_low["52주최저"].map("{:,.0f}".format)
+display_low = display_low[["종목명", "현재가", "52주최저", "저가대비(%)", "52주수익률(%)"]]
 
 st.dataframe(
     display_low.style.background_gradient(subset=["저가대비(%)"], cmap="Reds_r"),
@@ -165,5 +142,5 @@ sel_low = st.selectbox(
     key="sel_low"
 )
 if sel_low != "선택하세요":
-    row = low_df[low_df["종목명"] == sel_low].iloc[0]
-    detail_btn(row["stock_code"], sel_low, key="btn_low_detail")
+    if st.button("종목 상세 →", key="btn_low"):
+        go_detail(sel_low)
