@@ -69,6 +69,18 @@ def make_wide_table(df, item):
     pivot = pivot.reindex([r for r in row_order if r in pivot.index])
     return pivot
 
+def period_sort_key(p):
+    """2014Q1, 2014Q2, 2014Y 형식을 숫자 키로 변환"""
+    try:
+        if "Q" in p:
+            y, q = p.split("Q")
+            return int(y) * 10 + int(q)
+        elif "Y" in p:
+            return int(p.replace("Y", "")) * 10 + 4
+    except Exception:
+        pass
+    return 0
+
 def make_quarter_series(df, items):
     points = []
     for item in items:
@@ -83,7 +95,7 @@ def make_quarter_series(df, items):
                     "항목": item,
                 })
         else:
-            # 연간 데이터로 대체 (연도만 표시)
+            # 연간 데이터로 대체
             sub_a = df[(df["item"] == item) & (df["quarter"] == 0)].sort_values("year")
             for _, row in sub_a.iterrows():
                 points.append({
@@ -106,14 +118,8 @@ def load_price_quarterly(stock_code):
         return None
 
 def sort_periods(periods):
-    """2014Q1 형식의 기간을 올바르게 정렬"""
-    def key(p):
-        try:
-            y, q = p.split("Q")
-            return int(y) * 10 + int(q)
-        except:
-            return 0
-    return sorted(periods, key=key)
+    """2014Q1, 2014Q2, 2014Y 형식을 올바르게 정렬"""
+    return sorted(periods, key=period_sort_key)
 
 def make_combined_fig(pts_df, graph_items, price_s, sel_name, chart_type):
     """재무지표 + 주가 이중축 통합 차트"""
@@ -125,7 +131,7 @@ def make_combined_fig(pts_df, graph_items, price_s, sel_name, chart_type):
 
     # 재무 지표 (왼쪽 축)
     for item in graph_items:
-        sub = pts_df[pts_df["항목"] == item].sort_values("기간") if not pts_df.empty else pd.DataFrame()
+        sub = pts_df[pts_df["항목"] == item].copy(); sub = sub.iloc[sub["기간"].map(period_sort_key).argsort()] if not sub.empty else sub
         if sub.empty:
             continue
         if chart_type == "바":
@@ -146,7 +152,13 @@ def make_combined_fig(pts_df, graph_items, price_s, sel_name, chart_type):
 
     fig.update_layout(
         title=f"{sel_name} — 분기별 재무 + 주가",
-        xaxis=dict(tickangle=-45, tickvals=all_periods[::4], categoryorder="array", categoryarray=all_periods),
+        xaxis=dict(
+            tickangle=-45,
+            categoryorder="array",
+            categoryarray=all_periods,
+            # Q1만 tick 표시 (Y형식은 모두 표시)
+            tickvals=[p for p in all_periods if p.endswith("Q1") or p.endswith("Q2") or "Y" in p][::2],
+        ),
         barmode="group",
         hovermode="x unified",
         height=500,
