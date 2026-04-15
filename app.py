@@ -111,7 +111,11 @@ with col_right:
     if st.button("Screening", key="btn_screening", use_container_width=False):
         st.switch_page("pages/2_전체_랭킹.py")
 
-    st.button("Grow  soon", key="btn_grow", disabled=True, use_container_width=False)
+    if st.button("Grow", key="btn_grow", use_container_width=False):
+        st.switch_page("pages/4_Grow.py")
+
+    if st.button("52 Week", key="btn_52week", use_container_width=False):
+        st.switch_page("pages/5_52Week.py")
 
     if st.button("Setting", key="btn_setting", use_container_width=False):
         st.switch_page("pages/3_설정.py")
