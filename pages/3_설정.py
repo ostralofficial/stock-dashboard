@@ -35,7 +35,7 @@ with st.container():
 
 st.header("Setting")
 
-tab1, tab2, tab3, tab4 = st.tabs(["DB 현황", "종목 관리", "데이터 수집", "수동 입력"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["DB 현황", "종목 관리", "데이터 수집", "수동 입력", "지표 계산"])
 
 # ── Tab 1: DB 현황 ────────────────────────────────────────
 with tab1:
@@ -330,3 +330,145 @@ with tab4:
                     }, on_conflict="stock_code,year,item").execute()
             st.success("저장 완료!")
             st.rerun()
+
+# ── Tab 5: 지표 계산 ──────────────────────────────────────
+with tab5:
+    st.subheader("파생 지표 자동 계산")
+    st.caption("DART 수집 데이터를 바탕으로 PER, PBR, ROE, ROIC, 적정가격 등을 계산해 DB에 저장합니다.")
+
+    # ── BBB 채권 수익률 설정 ──────────────────────────────
+    st.markdown("**BBB 5년채 수익률 설정**")
+
+    # pykrx로 자동 조회
+    auto_bbb = None
+    try:
+        from pykrx import bond
+        from datetime import datetime, timedelta
+        _end = datetime.today().strftime("%Y%m%d")
+        _start = (datetime.today() - timedelta(days=30)).strftime("%Y%m%d")
+        _df = bond.get_otc_treasury_yields(_start, _end, "회사채BBB-")
+        if _df is not None and not _df.empty:
+            auto_bbb = float(_df["수익률"].iloc[-1])
+    except Exception:
+        pass
+
+    col_bbb1, col_bbb2 = st.columns([2, 1])
+    with col_bbb1:
+        if auto_bbb:
+            st.success(f"pykrx 자동 조회: **BBB- 3년 {auto_bbb:.2f}%** (KRX 기준)")
+        else:
+            st.warning("pykrx 자동 조회 실패 — 수동 입력값을 사용합니다")
+    with col_bbb2:
+        manual_bbb = st.number_input(
+            "BBB채권수익률 직접 입력 (%)",
+            min_value=0.0, max_value=30.0,
+            value=auto_bbb if auto_bbb else 4.5,
+            step=0.01, format="%.2f",
+            help="KIS Rating(kisrating.com)에서 확인한 BBB 5년 수익률을 입력하세요. 입력 시 자동 조회값보다 우선 적용됩니다."
+        )
+
+    # 실제 사용할 BBB 수익률 결정
+    use_bbb = manual_bbb if manual_bbb > 0 else (auto_bbb or 4.5)
+    st.caption(f"적용될 BBB 수익률: **{use_bbb:.2f}%** ({use_bbb/100:.4f})")
+
+    st.divider()
+
+    # ── 계산 실행 ─────────────────────────────────────────
+    st.markdown("**계산 실행**")
+
+    calc_mode = st.radio(
+        "계산 범위",
+        ["전체 종목", "특정 종목만"],
+        horizontal=True,
+    )
+
+    stocks_df5 = get_all_stocks()
+    sel_calc_stock = None
+    if calc_mode == "특정 종목만" and not stocks_df5.empty:
+        sel_calc_stock = st.selectbox("종목 선택", stocks_df5["name"].tolist(), key="calc_stock")
+
+    if st.button("계산 시작", type="primary", key="btn_calc"):
+        from calculate_derived import calculate_derived, get_current_price
+        import pandas as pd
+
+        client_calc = get_client()
+
+        if calc_mode == "특정 종목만" and sel_calc_stock:
+            targets = stocks_df5[stocks_df5["name"] == sel_calc_stock]
+        else:
+            targets = stocks_df5
+
+        progress_c = st.progress(0)
+        status_c = st.empty()
+        total_c = len(targets)
+        saved_c = 0
+        errors_c = []
+
+        for idx, (_, row) in enumerate(targets.iterrows()):
+            progress_c.progress((idx + 1) / total_c)
+            status_c.text(f"계산 중: {row['name']} ({idx+1}/{total_c})")
+
+            try:
+                res = (client_calc.table("financials")
+                       .select("year, quarter, item, value")
+                       .eq("stock_code", row["stock_code"])
+                       .execute())
+                if not res.data:
+                    continue
+
+                fin_df = pd.DataFrame(res.data)
+                price = get_current_price(row["stock_code"])
+
+                records = calculate_derived(
+                    row["stock_code"], fin_df,
+                    price=price,
+                    bbb_rate=use_bbb / 100,
+                )
+                if records:
+                    client_calc.table("financials").upsert(
+                        records,
+                        on_conflict="stock_code,year,quarter,item"
+                    ).execute()
+                    saved_c += len(records)
+            except Exception as e:
+                errors_c.append(f"{row['name']}: {e}")
+
+        status_c.empty()
+        progress_c.progress(1.0)
+
+        if saved_c > 0:
+            st.success(f"✅ 완료! {saved_c:,}개 파생 지표 저장됨")
+        else:
+            st.warning("저장된 지표가 없습니다. 먼저 DART 수집을 완료해주세요.")
+
+        if errors_c:
+            with st.expander(f"⚠️ 오류 {len(errors_c)}건"):
+                for e in errors_c[:30]:
+                    st.text(e)
+
+    # ── 계산 항목 안내 ────────────────────────────────────
+    with st.expander("계산되는 항목 목록"):
+        st.markdown("""
+| 항목 | 공식 |
+|------|------|
+| 매출증가 / 영익증가 / 순익증가 | (올해 - 작년) / abs(작년) |
+| 매출원가률 / 영익률 / 순익률 / 판관비률 | 각 항목 / 매출액 |
+| 부채비율 | 부채총계 / 자본총계 |
+| ROE | 순이익 / 자본총계 |
+| ROIC | (영업이익 - 법인세) / (유동자산 - 유동부채 + 유형자산) |
+| EBITDA | 영업이익 + 감가상각 |
+| FCF | 영업활동CF - abs(투자활동CF) |
+| BPS | 자본총계 / 주식수 |
+| EPS | 순이익 / 주식수 |
+| 배당총액 | DPS × 주식수 |
+| 배당성향 | 배당총액 / 순이익 |
+| 배당수익률 | DPS / 현재가 |
+| 주식소각비율 | (전년주식수 - 올해주식수) / 전년주식수 |
+| PER | 현재가 / EPS |
+| PBR | 현재가 / BPS |
+| 적정가격 | (BPS + (EPS₀×3 + EPS₋₁×2 + EPS₋₂) / 6 × 10) / 2 |
+| RIM가격 | BPS + BPS × (ROE평균 - BBB%) / BBB% |
+| 서준식교수 | BPS × (1+ROE평균)¹⁰ / 현재가 - (1+BBB%)¹⁰ |
+| 10년가격 | BPS × (1+ROE평균)¹⁰ |
+| 기대수익률 | (적정가격 / 현재가)^(1/10) - 1 |
+        """)
