@@ -82,6 +82,36 @@ def get_collected_codes(client, codes):
                 collected.add(r["stock_code"])
     return collected
 
+def detect_unit_divisor(rows):
+    """
+    매출액(IS) 또는 자산총계(BS) 금액 자릿수로 단위 추정
+    반환: 나눌 값 (모두 백만원 단위로 통일)
+      - 원 단위   → 1,000,000
+      - 천원 단위 → 1,000
+      - 백만원    → 1
+    """
+    ref_items = {"매출액", "자산총계", "영업활동으로인한현금흐름", "영업활동 현금흐름"}
+    for row in rows:
+        acnt = row.get("account_nm", "").strip()
+        if acnt not in ref_items:
+            continue
+        val_str = row.get("thstrm_amount", "").replace(",", "").strip()
+        if not val_str or val_str in ("-", ""):
+            continue
+        try:
+            val = abs(float(val_str))
+            if val == 0:
+                continue
+            if val >= 100_000_000_000:   # 1000억 이상 → 원 단위
+                return 1_000_000
+            elif val >= 100_000_000:     # 1억 이상 → 천원 단위
+                return 1_000
+            else:                        # 백만원 단위
+                return 1
+        except ValueError:
+            continue
+    return 1  # 판단 불가 → 그대로
+
 def fetch_statements(api_key, corp_code, year, report_code="11011"):
     results = {}
     for fs_div, mapping in [("IS", INCOME_MAP), ("BS", BALANCE_MAP), ("CF", CASHFLOW_MAP)]:
@@ -100,7 +130,11 @@ def fetch_statements(api_key, corp_code, year, report_code="11011"):
             data = resp.json()
             if data.get("status") != "000":
                 continue
-            for row in data.get("list", []):
+
+            rows = data.get("list", [])
+            divisor = detect_unit_divisor(rows)  # 단위 자동 감지
+
+            for row in rows:
                 acnt = row.get("account_nm", "").strip()
                 our_name = mapping.get(acnt)
                 if not our_name:
@@ -109,7 +143,8 @@ def fetch_statements(api_key, corp_code, year, report_code="11011"):
                 if not val_str or val_str == "-":
                     continue
                 try:
-                    results[our_name] = float(val_str)
+                    val = float(val_str) / divisor  # 백만원 단위로 통일
+                    results[our_name] = val
                 except ValueError:
                     pass
             time.sleep(0.3)
