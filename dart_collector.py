@@ -50,6 +50,31 @@ CASHFLOW_MAP = {
     "감가상각비": "감가상각",
 }
 
+
+def detect_unit_divisor(rows):
+    """금액 자릿수로 단위 추정 → 백만원으로 통일"""
+    ref_items = {"매출액", "자산총계", "영업활동으로인한현금흐름", "영업활동 현금흐름"}
+    for row in rows:
+        acnt = row.get("account_nm", "").strip()
+        if acnt not in ref_items:
+            continue
+        val_str = row.get("thstrm_amount", "").replace(",", "").strip()
+        if not val_str or val_str in ("-", ""):
+            continue
+        try:
+            val = abs(float(val_str))
+            if val == 0:
+                continue
+            if val >= 100_000_000_000:
+                return 1_000_000
+            elif val >= 100_000_000:
+                return 1_000
+            else:
+                return 1
+        except ValueError:
+            continue
+    return 1
+
 def fetch_financial_statements(api_key, corp_code, year, report_code="11011"):
     results = {}
     debug_info = []
@@ -79,7 +104,9 @@ def fetch_financial_statements(api_key, corp_code, year, report_code="11011"):
             if status != "000":
                 continue
 
-            for row in data.get("list", []):
+            rows = data.get("list", [])
+            divisor = detect_unit_divisor(rows)
+            for row in rows:
                 acnt = row.get("account_nm", "").strip()
                 our_name = mapping.get(acnt)
                 if not our_name:
